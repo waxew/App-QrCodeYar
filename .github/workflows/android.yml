@@ -1,5 +1,5 @@
 # CI اصلی پروژه: هر Push روی main ابتدا Debug و Release را کامپایل می‌کند.
-# Release این Workflow عمداً unsigned است؛ کلید خصوصی انتشار نباید داخل GitHub عمومی قرار بگیرد.
+# Release در Runner به‌صورت unsigned + zipaligned آماده می‌شود؛ کلید خصوصی Production هرگز وارد GitHub عمومی نمی‌شود.
 name: Android CI
 
 on:
@@ -22,7 +22,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # چون Gradle Wrapper عمداً در نسخه اولیه وجود ندارد، Gradle ثابت 8.9 نصب می‌شود.
+      # نسخه Gradle با Android Gradle Plugin پروژه سازگار است.
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -34,20 +34,22 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
 
-      # Debug برای کنترل سریع نصب تستی و Release برای فایل پابلیش ساخته می‌شود.
+      # Debug برای تست و Release برای فایل پابلیش کامپایل می‌شوند.
       - name: Build debug and unsigned release APK
         run: gradle :app:assembleDebug :app:assembleRelease --stacktrace
 
-      # ابزار رسمی apksigner و zipalign همراه unsigned APK در Artifact قرار می‌گیرند.
-      # امضای نهایی بیرون GitHub و با Release Key خصوصی انجام می‌شود.
-      - name: Prepare release signing bundle
+      # zipalign باید قبل از امضای نهایی انجام شود؛ این کار داخل محیط رسمی Android SDK انجام می‌شود.
+      - name: Prepare aligned release signing bundle
         run: |
           mkdir -p /tmp/release-bundle/tools/lib
-          cp app/build/outputs/apk/release/app-release-unsigned.apk /tmp/release-bundle/
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            /tmp/release-bundle/App-QrCodeYar-v1.0.1-aligned-unsigned.apk
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 \
+            /tmp/release-bundle/App-QrCodeYar-v1.0.1-aligned-unsigned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/apksigner" /tmp/release-bundle/tools/
-          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" /tmp/release-bundle/tools/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/release-bundle/tools/lib/
-          chmod +x /tmp/release-bundle/tools/apksigner /tmp/release-bundle/tools/zipalign
+          chmod +x /tmp/release-bundle/tools/apksigner
 
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
