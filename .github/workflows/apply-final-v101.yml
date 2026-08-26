@@ -1,0 +1,438 @@
+name: Apply final App-QrCodeYar v1.0.1
+
+on:
+  push:
+    branches: [ finalize-user-v101 ]
+    paths:
+      - '.github/workflows/apply-final-v101.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout clean release branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply reviewed source changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+
+          # ------------------------------------------------------------------
+          # Main Compose UI: comments, proper back stack, drawer behavior,
+          # UPC-E support, and simplified About Software page.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt'
+          s = p.read_text()
+          if 'import androidx.activity.compose.BackHandler' not in s:
+              s = s.replace(
+                  'import androidx.activity.compose.rememberLauncherForActivityResult\n',
+                  'import androidx.activity.compose.BackHandler\nimport androidx.activity.compose.rememberLauncherForActivityResult\n'
+              )
+          if 'import androidx.compose.runtime.mutableStateListOf' not in s:
+              s = s.replace(
+                  'import androidx.compose.runtime.mutableStateOf\n',
+                  'import androidx.compose.runtime.mutableStateListOf\nimport androidx.compose.runtime.mutableStateOf\n'
+              )
+
+          start = s.index('@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun QrBarcodeApp(')
+          end = s.index('\n@Composable\nprivate fun HomeScreen', start)
+          new_func = r'''@OptIn(ExperimentalMaterial3Api::class)
+          @Composable
+          fun QrBarcodeApp(
+              activity: Activity,
+              billingManager: BillingManager,
+              preferences: PreferencesRepository
+          ) {
+              // کل برنامه RTL است تا جای آیکون همبرگری، Drawer و متن‌ها برای فارسی طبیعی باشد.
+              CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                  // وضعیت Drawer مشخص می‌کند منوی کناری باز است یا بسته.
+                  val drawerState = rememberDrawerState(DrawerValue.Closed)
+                  // Scope برای بستن/بازکردن Drawer و نمایش Snackbar استفاده می‌شود.
+                  val scope = rememberCoroutineScope()
+                  // Snackbar پیام نتیجه ذخیره فایل و خطاهای کوتاه را نمایش می‌دهد.
+                  val snackbar = remember { SnackbarHostState() }
+                  // وضعیت اشتراک به صورت StateFlow از BillingManager دریافت می‌شود.
+                  val premiumState by billingManager.state.collectAsStateCompat()
+                  // صفحه فعلی برنامه؛ صفحه شروع همیشه HOME است.
+                  var screen by remember { mutableStateOf(Screen.HOME) }
+                  // Back stack دستی باعث می‌شود Back به صفحه قبلی برگردد و برنامه ناگهانی بسته نشود.
+                  val backStack = remember { mutableStateListOf<Screen>() }
+                  // اطلاعات نسخه جدید فقط وقتی نسخه بالاتری موجود باشد مقدار می‌گیرد.
+                  var updateInfo by remember { mutableStateOf<com.waxew.qrbarcode.update.UpdateInfo?>(null) }
+
+                  // تمام ناوبری داخلی از این تابع عبور می‌کند تا رفتار Back یکسان باشد.
+                  fun navigateTo(destination: Screen) {
+                      if (destination == screen) return
+                      backStack.add(screen)
+                      screen = destination
+                  }
+
+                  // خانه ریشه ناوبری است؛ رفتن به خانه از Drawer تاریخچه صفحات را پاک می‌کند.
+                  fun goHome() {
+                      backStack.clear()
+                      screen = Screen.HOME
+                  }
+
+                  // انتخاب گزینه منو ابتدا Drawer را می‌بندد و سپس صفحه را تغییر می‌دهد.
+                  fun openFromDrawer(destination: Screen) {
+                      scope.launch {
+                          drawerState.close()
+                          if (destination == Screen.HOME) goHome() else navigateTo(destination)
+                      }
+                  }
+
+                  // Back در Drawer فقط Drawer را می‌بندد؛ در صفحات داخلی به صفحه قبل برمی‌گردد.
+                  // فقط وقتی کاربر روی HOME است BackHandler غیرفعال است تا خروج عادی Android انجام شود.
+                  BackHandler(enabled = drawerState.isOpen || screen != Screen.HOME) {
+                      if (drawerState.isOpen) {
+                          scope.launch { drawerState.close() }
+                      } else if (backStack.isNotEmpty()) {
+                          screen = backStack.removeAt(backStack.lastIndex)
+                      } else {
+                          screen = Screen.HOME
+                      }
+                  }
+
+                  // بررسی آپدیت روی IO انجام می‌شود تا UI هنگام شروع برنامه مسدود نشود.
+                  LaunchedEffect(Unit) {
+                      updateInfo = withContext(Dispatchers.IO) { UpdateChecker.check() }
+                  }
+
+                  // در صورت وجود نسخه جدید، دیالوگ بروزرسانی نمایش داده می‌شود.
+                  updateInfo?.let { info ->
+                      AlertDialog(
+                          onDismissRequest = { updateInfo = null },
+                          title = { Text("نسخه جدید رسید 🎉") },
+                          text = { Text("نسخه ${info.versionName}\\n${info.changelog}") },
+                          confirmButton = {
+                              Button(onClick = { UpdateChecker.openDownload(activity, info) }) {
+                                  Text("دریافت بروزرسانی")
+                              }
+                          },
+                          dismissButton = {
+                              TextButton(onClick = { updateInfo = null }) { Text("بعداً") }
+                          }
+                      )
+                  }
+
+                  // به دلیل RTL بودن Layout، Drawer از سمت راست باز می‌شود.
+                  ModalNavigationDrawer(
+                      drawerState = drawerState,
+                      drawerContent = {
+                          ModalDrawerSheet {
+                              DrawerHeader(premiumState.active)
+                              DrawerItem("خانه", Icons.Default.Home, screen == Screen.HOME) { openFromDrawer(Screen.HOME) }
+                              DrawerItem("اشتراک حرفه‌ای", Icons.Default.Paid, screen == Screen.PREMIUM) { openFromDrawer(Screen.PREMIUM) }
+                              HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                              DrawerItem("تنظیمات", Icons.Default.Settings, screen == Screen.SETTINGS) { openFromDrawer(Screen.SETTINGS) }
+                              DrawerItem("معرفی به دوستان", Icons.Default.Share, false) {
+                                  scope.launch {
+                                      drawerState.close()
+                                      shareApp(activity)
+                                  }
+                              }
+                              DrawerItem("درباره ما", Icons.Default.Info, screen == Screen.ABOUT_US) { openFromDrawer(Screen.ABOUT_US) }
+                              DrawerItem("تماس با ما", Icons.Default.ContactSupport, screen == Screen.CONTACT) { openFromDrawer(Screen.CONTACT) }
+                              DrawerItem("درباره نرم افزار", Icons.Default.QrCode, screen == Screen.ABOUT_APP) { openFromDrawer(Screen.ABOUT_APP) }
+                          }
+                      }
+                  ) {
+                      // Scaffold نوار بالایی، Snackbar و محتوای صفحه را کنار هم نگه می‌دارد.
+                      Scaffold(
+                          topBar = {
+                              CenterAlignedTopAppBar(
+                                  title = { Text(screen.title, fontWeight = FontWeight.Bold) },
+                                  navigationIcon = {
+                                      // آیکون سه‌خط همیشه در بالای سمت راست قرار دارد.
+                                      IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                          Icon(Icons.Default.Menu, contentDescription = "منوی همبرگری")
+                                      }
+                                  }
+                              )
+                          },
+                          snackbarHost = { SnackbarHost(snackbar) }
+                      ) { inner ->
+                          Box(Modifier.fillMaxSize().padding(inner)) {
+                              // فقط صفحه فعلی Compose می‌شود و جابه‌جایی‌ها از navigateTo عبور می‌کنند.
+                              when (screen) {
+                                  Screen.HOME -> HomeScreen(onOpen = { navigateTo(it) })
+                                  Screen.QR -> QrMakerScreen(
+                                      isPremium = premiumState.active,
+                                      preferences = preferences,
+                                      onNeedPremium = { navigateTo(Screen.PREMIUM) },
+                                      onMessage = { scope.launch { snackbar.showSnackbar(it) } }
+                                  )
+                                  Screen.BARCODE -> BarcodeMakerScreen(
+                                      isPremium = premiumState.active,
+                                      preferences = preferences,
+                                      onNeedPremium = { navigateTo(Screen.PREMIUM) },
+                                      onMessage = { scope.launch { snackbar.showSnackbar(it) } }
+                                  )
+                                  Screen.SCANNER -> ScannerScreen(preferences)
+                                  Screen.TEMPLATES -> TemplatesScreen(
+                                      isPremium = premiumState.active,
+                                      onOpenMaker = { navigateTo(Screen.QR) },
+                                      onNeedPremium = { navigateTo(Screen.PREMIUM) }
+                                  )
+                                  Screen.HISTORY -> HistoryScreen(preferences)
+                                  Screen.PREMIUM -> PremiumScreen(activity, billingManager, premiumState)
+                                  Screen.SETTINGS -> SettingsScreen(preferences)
+                                  Screen.ABOUT_US -> AboutUsScreen()
+                                  Screen.CONTACT -> ContactScreen()
+                                  Screen.ABOUT_APP -> AboutAppScreen()
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          '''
+          # Remove indentation introduced by embedding this source in the workflow Python block.
+          import textwrap
+          new_func = textwrap.dedent(new_func)
+          s = s[:start] + new_func + s[end:]
+
+          if '"UPC-E" to BarcodeFormat.UPC_E' not in s:
+              s = s.replace(
+                  '"UPC-A" to BarcodeFormat.UPC_A,\n            "ITF"',
+                  '"UPC-A" to BarcodeFormat.UPC_A,\n            "UPC-E" to BarcodeFormat.UPC_E,\n            "ITF"'
+              )
+
+          old_about = '''private fun AboutAppScreen() = CenterInfo {\n    Text("QR ساز و Barcode ساز", fontWeight = FontWeight.Black, fontSize = 22.sp)\n    Spacer(Modifier.height(12.dp))\n    Text("ساخت، طراحی، اسکن و خروجی انواع QR و Barcode با امکانات ساده رایگان و ابزارهای حرفه‌ای اشتراکی.", textAlign = TextAlign.Center)\n    Spacer(Modifier.height(12.dp))\n    Text("نسخه ${BuildConfig.VERSION_NAME}")\n}'''
+          new_about = '''private fun AboutAppScreen() = CenterInfo {\n    // این صفحه عمداً فقط توضیح قابل فهم برای کاربر و شماره نسخه را نمایش می‌دهد.\n    Text("QR ساز و Barcode ساز", fontWeight = FontWeight.Black, fontSize = 22.sp)\n    Spacer(Modifier.height(12.dp))\n    Text("با این برنامه می‌توانید QR Code و انواع Barcode را بسازید و اسکن کنید.", textAlign = TextAlign.Center)\n    Spacer(Modifier.height(8.dp))\n    Text("طرح‌های مختلف، خروجی تصویری و ابزارهای مناسب چاپ در اختیار شماست.", textAlign = TextAlign.Center)\n    Spacer(Modifier.height(8.dp))\n    Text("اطلاعات و تاریخچه‌های لازم روی دستگاه نگهداری می‌شوند.", textAlign = TextAlign.Center)\n    Spacer(Modifier.height(18.dp))\n    Text("نسخه ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)\n}'''
+          if old_about not in s:
+              raise RuntimeError('AboutAppScreen baseline block not found')
+          s = s.replace(old_about, new_about)
+          s = s.replace(
+              'https://github.com/waxew/Assistant/tree/main/android/qr-barcode-studio',
+              'https://github.com/waxew/App-QrCodeYar'
+          )
+          header = '''/*\n * فایل QrBarcodeApp.kt\n * مسئول رابط کاربری اصلی، منوی همبرگری RTL، ناوبری، Back stack، سازنده QR/Barcode،\n * اسکنر، تاریخچه، تنظیمات و صفحات اطلاعات برنامه است.\n * کامنت‌ها عمداً پرجزئیات نوشته شده‌اند تا مسیر اجرای هر بخش برای توسعه نسخه‌های بعدی روشن باشد.\n */\n'''
+          if not s.startswith('/*\n * فایل QrBarcodeApp.kt'):
+              s = header + s
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # MainActivity: lifecycle comments.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/MainActivity.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * نقطه ورود اصلی برنامه.\n * این Activity سرویس پرداخت و تنظیمات محلی را می‌سازد و سپس رابط Compose را نمایش می‌دهد.\n */\n''' + s
+          s = s.replace('class MainActivity : ComponentActivity() {', '// تنها Activity برنامه؛ تمام صفحات داخلی داخل Compose مدیریت می‌شوند.\nclass MainActivity : ComponentActivity() {')
+          s = s.replace('    private lateinit var billingManager: BillingManager', '    // BillingManager اتصال به فروشگاه و وضعیت اشتراک Pro را نگهداری می‌کند.\n    private lateinit var billingManager: BillingManager')
+          s = s.replace('    override fun onCreate(savedInstanceState: Bundle?) {', '    // هنگام ساخته‌شدن Activity، وابستگی‌های سطح برنامه آماده می‌شوند.\n    override fun onCreate(savedInstanceState: Bundle?) {')
+          s = s.replace('    override fun onResume() {', '    // پس از بازگشت کاربر به برنامه، وضعیت خرید دوباره بررسی می‌شود.\n    override fun onResume() {')
+          s = s.replace('    override fun onDestroy() {', '    // اتصال Billing هنگام نابودی Activity آزاد می‌شود تا نشت منابع رخ ندهد.\n    override fun onDestroy() {')
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Update checker: robust network handling and correct repository URL.
+          # ------------------------------------------------------------------
+          (root / 'app/src/main/java/com/waxew/qrbarcode/update/UpdateChecker.kt').write_text(r'''/*
+           * بررسی بروزرسانی برنامه.
+           * فایل distribution/latest.json در GitHub شماره آخرین نسخه و لینک دریافت را نگه می‌دارد.
+           */
+          package com.waxew.qrbarcode.update
+
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import com.waxew.qrbarcode.BuildConfig
+          import org.json.JSONObject
+          import java.net.HttpURLConnection
+          import java.net.URL
+
+          // مدل ساده اطلاعات نسخه جدید که از JSON دریافت می‌شود.
+          data class UpdateInfo(
+              val versionCode: Int,
+              val versionName: String,
+              val downloadUrl: String,
+              val changelog: String
+          )
+
+          object UpdateChecker {
+              // آدرس همیشه به ریپوی اختصاصی App-QrCodeYar اشاره می‌کند.
+              private const val URL_LATEST = "https://raw.githubusercontent.com/waxew/App-QrCodeYar/main/distribution/latest.json"
+
+              // در صورت نبود اینترنت، پاسخ نامعتبر یا نبود نسخه جدید، null برگردانده می‌شود.
+              fun check(): UpdateInfo? = runCatching {
+                  val connection = URL(URL_LATEST).openConnection() as HttpURLConnection
+                  try {
+                      connection.connectTimeout = 3500
+                      connection.readTimeout = 3500
+                      connection.requestMethod = "GET"
+                      connection.setRequestProperty("Accept", "application/json")
+                      connection.connect()
+
+                      if (connection.responseCode !in 200..299) return@runCatching null
+
+                      val text = connection.inputStream.bufferedReader().use { it.readText() }
+                      val json = JSONObject(text)
+                      val info = UpdateInfo(
+                          versionCode = json.getInt("versionCode"),
+                          versionName = json.getString("versionName"),
+                          downloadUrl = json.getString("downloadUrl"),
+                          changelog = json.optString("changelog")
+                      )
+                      if (info.versionCode > BuildConfig.VERSION_CODE) info else null
+                  } finally {
+                      connection.disconnect()
+                  }
+              }.getOrNull()
+
+              // لینک دریافت نسخه جدید با مرورگر یا کلاینت مناسب دستگاه باز می‌شود.
+              fun openDownload(context: Context, info: UpdateInfo) {
+                  val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.downloadUrl)).apply {
+                      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                  }
+                  context.startActivity(intent)
+              }
+          }
+          '''.replace('          ', ''))
+
+          # ------------------------------------------------------------------
+          # ExportManager: prevent orphaned pending MediaStore rows on failure.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/export/ExportManager.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * مدیریت خروجی PNG، PDF و SVG.\n * در Android 10 به بالا از Scoped Storage / MediaStore و در نسخه‌های قدیمی از پوشه اختصاصی برنامه استفاده می‌شود.\n */\n''' + s
+          old = '''            try {\n                resolver.openOutputStream(uri)?.use(writer) ?: return null\n                values.clear()\n                values.put(MediaStore.MediaColumns.IS_PENDING, 0)\n                resolver.update(uri, values, null, null)\n                uri\n            } catch (t: Throwable) {\n                resolver.delete(uri, null, null)\n                throw t\n            }'''
+          new = '''            try {\n                // اگر OutputStream باز نشود، رکورد ناقص MediaStore حذف می‌شود.\n                val output = resolver.openOutputStream(uri)\n                    ?: run {\n                        resolver.delete(uri, null, null)\n                        return null\n                    }\n                output.use(writer)\n                // پس از تکمیل نوشتن، فایل از حالت pending خارج می‌شود.\n                values.clear()\n                values.put(MediaStore.MediaColumns.IS_PENDING, 0)\n                resolver.update(uri, values, null, null)\n                uri\n            } catch (t: Throwable) {\n                resolver.delete(uri, null, null)\n                throw t\n            }'''
+          if old not in s:
+              raise RuntimeError('ExportManager baseline block not found')
+          s = s.replace(old, new)
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Lightweight persistence comments.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/data/PreferencesRepository.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * ذخیره تنظیمات سبک و تاریخچه محلی با SharedPreferences.\n * این داده‌ها هنگام آپدیت عادی برنامه حفظ می‌شوند چون applicationId ثابت می‌ماند.\n */\n''' + s
+          s = s.replace('data class HistoryItem', '// هر رکورد تاریخچه نوع کد، مقدار و زمان ایجاد را نگه می‌دارد.\ndata class HistoryItem')
+          s = s.replace('class PreferencesRepository(context: Context) {', '// این Repository تمام دسترسی UI به SharedPreferences را متمرکز می‌کند.\nclass PreferencesRepository(context: Context) {')
+          s = s.replace('    fun addHistory(kind: String, payload: String) {', '    // مورد جدید ابتدا اضافه می‌شود؛ موارد تکراری حذف و تعداد روی 30 محدود می‌شود.\n    fun addHistory(kind: String, payload: String) {')
+          s = s.replace('    fun history(): List<HistoryItem> {', '    // JSON خراب نباید برنامه را Crash کند؛ در خطا لیست خالی برمی‌گردد.\n    fun history(): List<HistoryItem> {')
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Generator comments.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/generator/CodeGenerator.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * هسته تولید QR و Barcode بر پایه ZXing.\n * خروجی هم Bitmap برای تصویر/PDF و هم BitMatrix برای SVG را نگه می‌دارد.\n */\n''' + s
+          s = s.replace('enum class ModuleStyle', '// CLASSIC رایگان است و استایل‌های دیگر با Premium Gate کنترل می‌شوند.\nenum class ModuleStyle')
+          s = s.replace('data class GeneratedCode', '// یک خروجی واحد اطلاعات Preview و فرمت‌های خروجی را نگه می‌دارد.\ndata class GeneratedCode')
+          s = s.replace('object CodeGenerator {', '// تولید کد مستقل از UI است تا تست و توسعه ساده بماند.\nobject CodeGenerator {')
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Billing and theme comments.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/billing/BillingManager.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * لایه پرداخت و اشتراک هفتگی Pro با Google Play Billing.\n * برای فروشگاه‌های دیگر می‌توان Provider پرداخت را بدون تغییر UI جایگزین کرد.\n */\n''' + s
+          p.write_text(s)
+
+          p = root / 'app/src/main/java/com/waxew/qrbarcode/ui/theme/Theme.kt'
+          s = p.read_text()
+          if not s.startswith('/*'):
+              s = '''/*\n * تم Material 3 برنامه با پالت ملایم و ظاهر دوستانه.\n * Dark Mode از تنظیم خود سیستم پیروی می‌کند.\n */\n''' + s
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Build configuration and version bump.
+          # ------------------------------------------------------------------
+          p = root / 'app/build.gradle.kts'
+          s = p.read_text()
+          s = s.replace('versionCode = 1', 'versionCode = 2')
+          s = s.replace('versionName = "1.0.0"', 'versionName = "1.0.1"')
+          if not s.startswith('// تنظیمات ماژول'):
+              s = '// تنظیمات ماژول Android برنامه App-QrCodeYar.\n// applicationId اصلی نباید در نسخه‌های بعدی عوض شود چون Android آن را هویت برنامه می‌داند.\n' + s
+          p.write_text(s)
+
+          p = root / 'build.gradle.kts'
+          s = p.read_text()
+          if not s.startswith('// نسخه Plugin'):
+              s = '// نسخه Pluginهای اصلی Gradle در سطح پروژه؛ تغییر آنها باید با CI تست شود.\n' + s
+          p.write_text(s)
+
+          p = root / 'settings.gradle.kts'
+          s = p.read_text()
+          if not s.startswith('// مخازن'):
+              s = '// مخازن Plugin/Dependency و نام پروژه Gradle در این فایل تعریف می‌شوند.\n' + s
+          p.write_text(s)
+
+          p = root / 'gradle.properties'
+          s = p.read_text()
+          if not s.startswith('# تنظیمات عمومی'):
+              s = '# تنظیمات عمومی Gradle و AndroidX برای این پروژه.\n' + s
+          p.write_text(s)
+
+          p = root / 'app/proguard-rules.pro'
+          s = p.read_text()
+          if not s.startswith('# قوانین اختصاصی'):
+              s = '# قوانین اختصاصی R8/ProGuard؛ در نسخه فعلی minify غیرفعال است.\n' + s
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Manifest comments.
+          # ------------------------------------------------------------------
+          p = root / 'app/src/main/AndroidManifest.xml'
+          s = p.read_text()
+          if '<!-- Manifest مجوزهای لازم' not in s:
+              s = s.replace('?>\n', '?>\n<!-- Manifest مجوزهای لازم و Activity شروع برنامه را تعریف می‌کند. -->\n', 1)
+              s = s.replace('    <uses-permission android:name="android.permission.CAMERA" />', '    <!-- دوربین فقط برای اسکن QR/Barcode لازم است. -->\n    <uses-permission android:name="android.permission.CAMERA" />')
+              s = s.replace('    <uses-permission android:name="android.permission.INTERNET" />', '    <!-- اینترنت برای بررسی نسخه و سرویس Billing استفاده می‌شود. -->\n    <uses-permission android:name="android.permission.INTERNET" />')
+              s = s.replace('    <application', '    <!-- تنظیمات عمومی Application، آیکون، تم و پشتیبانی RTL. -->\n    <application', 1)
+              s = s.replace('        <activity', '        <!-- تنها Activity برنامه؛ صفحات داخلی با Compose مدیریت می‌شوند. -->\n        <activity', 1)
+          p.write_text(s)
+
+          # ------------------------------------------------------------------
+          # Update metadata and user/developer documentation.
+          # ------------------------------------------------------------------
+          (root / 'distribution/latest.json').write_text('''{\n  "versionCode": 2,\n  "versionName": "1.0.1",\n  "downloadUrl": "https://github.com/waxew/App-QrCodeYar/releases",\n  "changelog": "بهبود ناوبری و دکمه Back، تکمیل منوی همبرگری، اصلاح درباره نرم افزار، کامنت‌گذاری سورس و رفع باگ‌های خروجی/آپدیت."\n}\n''')
+
+          (root / 'CHANGELOG.md').write_text('''# Changelog\n\n## 1.0.1\n- Back navigation stack and drawer-close behavior fixed.\n- About Software simplified.\n- UPC-E added.\n- Update checker and MediaStore error handling hardened.\n- Source comments and Persian source guide added.\n\n## 1.0.0\n- Initial QR/Barcode generation, scanning, export, history, premium gate and update checker.\n''')
+
+          (root / 'README.md').write_text('''# App-QrCodeYar — Android v1.0.1\n\nبرنامه اندروید فارسی برای ساخت، شخصی‌سازی، اسکن و خروجی QR Code و Barcode با Kotlin و Jetpack Compose. رابط برنامه RTL است و منوی همبرگری از سمت راست باز می‌شود.\n\n## امکانات نسخه 1.0.1\n\n- ساخت QR برای لینک، متن، Wi‑Fi، ایمیل، تلفن و SMS\n- Barcode: Code 128، Code 39، EAN‑13، EAN‑8، UPC‑A، UPC‑E، ITF، Codabar، Data Matrix، PDF417 و Aztec\n- اسکن QR/Barcode با دوربین\n- PNG استاندارد رایگان و خروجی‌های HD/PDF/SVG در سطح Pro\n- استایل‌های QR کلاسیک، گرد، نقطه‌ای و حبابی\n- تاریخچه محلی و حفظ داده‌ها بین آپدیت‌ها\n- منوی همبرگری RTL با تنظیمات، اشتراک، معرفی به دوستان، درباره ما، تماس با ما و درباره نرم افزار\n- Back stack داخلی: Back در صفحات داخلی به صفحه قبل برمی‌گردد و فقط در خانه از برنامه خارج می‌شود\n- تنظیم اعلان‌ها و Dark Mode هماهنگ با سیستم\n- بررسی بروزرسانی از `distribution/latest.json`\n\n## تغییرات v1.0.1\n\n- اصلاح رفتار دکمه Back و جلوگیری از خروج ناخواسته از صفحات داخلی\n- بستن خودکار Drawer بعد از انتخاب گزینه\n- ساده‌سازی صفحه «درباره نرم افزار»؛ فقط توضیح کاربردی و شماره نسخه\n- افزودن UPC‑E\n- مقاوم‌تر شدن UpdateChecker در خطاهای شبکه/HTTP\n- پاک‌سازی رکورد ناقص MediaStore در صورت خطای خروجی\n- کامنت‌گذاری توضیحی فایل‌های اصلی و راهنمای ساختار سورس\n\n## مدل درآمدی\n\nساخت و پیش‌نمایش کدها و PNG استاندارد برای طرح کلاسیک رایگان است. استایل‌های حرفه‌ای و خروجی‌های HD/PDF/SVG با اشتراک هفتگی Pro باز می‌شوند. پرداخت برای هر فایل جداگانه نیست.\n\n## بروزرسانی و امضا\n\n`applicationId` نسخه انتشار ثابت می‌ماند: `com.waxew.qrbarcode`. کلید Release خصوصی عمداً در GitHub قرار نمی‌گیرد. برای تمام نسخه‌های آینده باید دقیقاً همان Release key استفاده شود تا آپدیت روی نسخه نصب‌شده ممکن باشد.\n\nاطلاعات خصوصی امضا در بسته‌ای که به مالک پروژه تحویل داده می‌شود داخل `info.txt` و پوشه `signing/` نگهداری می‌شود و نباید عمومی شود.\n\n## Build\n\n- Android Gradle Plugin: 8.7.3\n- Kotlin: 2.0.21\n- JDK: 17\n- Gradle CI: 8.9\n- compileSdk / targetSdk: 35\n- minSdk: 23\n\nDebug: `gradle :app:assembleDebug`\n\nRelease امضاشده با متغیرهای `QR_KEYSTORE_PATH`, `QR_KEYSTORE_PASSWORD`, `QR_KEY_ALIAS`, `QR_KEY_PASSWORD` ساخته می‌شود.\n\n## راهنمای سورس\n\nتوضیح پوشه‌ها و فایل‌ها در `docs/SOURCE_GUIDE_FA.md` قرار دارد.\n''')
+
+          (root / 'docs').mkdir(exist_ok=True)
+          (root / 'docs/SOURCE_GUIDE_FA.md').write_text('''# راهنمای سورس App-QrCodeYar\n\nاین فایل برای فهم سریع ساختار پروژه نوشته شده است. فایل‌های تولیدی Gradle/IDE بخشی از سورس اصلی نیستند.\n\n## ریشه پروژه\n- `settings.gradle.kts`: نام پروژه و مخازن Plugin/Dependency.\n- `build.gradle.kts`: نسخه Android Gradle Plugin و Kotlin.\n- `gradle.properties`: تنظیمات AndroidX/Kotlin/Gradle.\n- `.gitignore`: فایل‌های محلی IDE و Build cache.\n- `README.md`: معرفی، قابلیت‌ها، Build و سیاست امضا/آپدیت.\n- `distribution/latest.json`: مرجع UpdateChecker برای تشخیص نسخه جدید.\n\n## app/\n- `app/build.gradle.kts`: applicationId، SDKها، versionCode/versionName، buildTypes، signing و dependencies.\n- `app/proguard-rules.pro`: قوانین R8/ProGuard.\n- `app/debug.keystore`: فقط کلید تست ثابت؛ برای انتشار Store استفاده نشود.\n\n## app/src/main/\n- `AndroidManifest.xml`: مجوز اینترنت/دوربین و تعریف MainActivity.\n- `MainActivity.kt`: نقطه ورود؛ BillingManager و PreferencesRepository را می‌سازد و Compose را اجرا می‌کند.\n- `ui/QrBarcodeApp.kt`: UI اصلی، Drawer، Back stack، Screenها، سازنده QR/Barcode، Scanner، History، Settings و About.\n- `ui/theme/Theme.kt`: رنگ‌ها و Material 3 Theme.\n- `generator/CodeGenerator.kt`: تولید QR و Barcode با ZXing.\n- `export/ExportManager.kt`: ذخیره PNG، PDF، SVG و Scoped Storage.\n- `data/PreferencesRepository.kt`: تنظیم اعلان‌ها و تاریخچه محلی.\n- `billing/BillingManager.kt`: اتصال Billing، خرید و Premium state.\n- `update/UpdateChecker.kt`: دریافت `latest.json` و تشخیص نسخه بالاتر.\n\n## قواعد نسخه‌های آینده\n1. `applicationId` را تغییر ندهید.\n2. Release keystore را تغییر ندهید.\n3. برای هر انتشار `versionCode` را افزایش دهید.\n4. `versionName` و `distribution/latest.json` را همزمان بروزرسانی کنید.\n5. داده‌های SharedPreferences را بدون Migration مخرب حفظ کنید.\n6. قبل از انتشار، Release Build و تست نصب روی نسخه قبلی انجام شود.\n''')
+
+          # ------------------------------------------------------------------
+          # Android CI builds both variants and uploads unsigned release plus
+          # apksigner, so the private release key never enters public GitHub.
+          # ------------------------------------------------------------------
+          (root / '.github/workflows/android.yml').write_text('''# CI اصلی پروژه: Debug و Release unsigned را کامپایل می‌کند.\nname: Android CI\n\non:\n  push:\n    branches: [ main ]\n  pull_request:\n    branches: [ main ]\n  workflow_dispatch:\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Set up JDK 17\n        uses: actions/setup-java@v4\n        with:\n          distribution: temurin\n          java-version: '17'\n\n      - name: Set up Gradle 8.9\n        uses: gradle/actions/setup-gradle@v4\n        with:\n          gradle-version: '8.9'\n\n      - name: Install Android SDK 35\n        run: |\n          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true\n          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"\n\n      - name: Compile Debug and unsigned Release\n        run: gradle :app:assembleDebug :app:assembleRelease --stacktrace\n\n      - name: Prepare signing utility for private local signing\n        run: |\n          mkdir -p signing-tools/lib\n          cp "$ANDROID_HOME/build-tools/35.0.0/apksigner" signing-tools/apksigner\n          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" signing-tools/lib/apksigner.jar\n          chmod +x signing-tools/apksigner\n\n      - name: Upload build package\n        uses: actions/upload-artifact@v4\n        with:\n          name: App-QrCodeYar-v1.0.1-build\n          path: |\n            app/build/outputs/apk/debug/app-debug.apk\n            app/build/outputs/apk/release/app-release-unsigned.apk\n            signing-tools/\n          if-no-files-found: error\n''')
+
+          # Remove the one-time migration workflow from the final tree.
+          apply_workflow = root / '.github/workflows/apply-final-v101.yml'
+          if apply_workflow.exists():
+              apply_workflow.unlink()
+          PY
+
+      - name: Commit final v1.0.1 source
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'Finalize App-QrCodeYar v1.0.1'
+          git push origin HEAD:finalize-user-v101
