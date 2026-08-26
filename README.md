@@ -1,72 +1,49 @@
-# QR ساز و Barcode ساز — Android v1.0.0
+# App-QrCodeYar
 
-اپ اندروید Kotlin + Jetpack Compose برای ساخت، طراحی، اسکن و خروجی QR Code و Barcode با رابط RTL و ظاهر کیوت.
+اپلیکیشن اندرویدی ساخت، شخصی‌سازی، اسکن و خروجی گرفتن از QR Code و Barcode با رابط فارسی و طراحی سبک و فانتزی.
 
-## وضعیت نسخه 1.0
+## نسخه فعلی
 
-- ساخت QR برای URL، متن، Wi-Fi، ایمیل، تلفن و SMS
-- ساخت Barcode در فرمت‌های Code 128، Code 39، EAN-13، EAN-8، UPC-A، ITF، Codabar، Data Matrix، PDF417 و Aztec
-- استایل QR کلاسیک رایگان + Rounded / Dots / Bubble حرفه‌ای
-- اسکن QR/Barcode با دوربین
-- خروجی PNG معمولی رایگان
-- خروجی PNG HD، PDF و SVG در سطح Pro
-- Paywall اشتراک هفتگی با product id: `qr_pro_weekly`
+- Version: **1.0.1**
+- Version code: **2**
+- Package/Application ID: `com.waxew.qrbarcode`
+- Minimum Android: API 23
+- Target Android: API 35
+- Kotlin + Jetpack Compose
+
+## امکانات
+
+- ساخت QR برای لینک، متن، Wi-Fi، ایمیل، تلفن و SMS
+- ساخت Code 128، Code 39، EAN-13، EAN-8، UPC-A، ITF، Codabar، Data Matrix، PDF417 و Aztec
+- اسکن QR و Barcode با دوربین
+- استایل‌های کلاسیک، گرد، نقطه‌ای و حبابی
+- خروجی PNG، PNG HD، PDF و SVG
 - تاریخچه محلی
-- منوی همبرگری RTL از سمت راست
-- تنظیمات اعلان‌ها
-- صفحات معرفی به دوستان، درباره ما، تماس با ما و درباره نرم‌افزار
-- Dark Mode هماهنگ با سیستم
-- بررسی نسخه جدید از `distribution/latest.json`
+- تنظیم اعلان‌ها و Dark Mode خودکار
+- منوی همبرگری راست‌چین
+- Back stack داخلی: دکمه Back ابتدا به صفحه قبلی برمی‌گردد و فقط از خانه می‌تواند برنامه را ببندد
+- بررسی نسخه جدید از `distribution/latest.json` همین ریپو
+- مدل Freemium و اشتراک هفتگی Pro
 
-## مدل درآمدی
+## ساختار مهم سورس
 
-ساخت و پیش‌نمایش کدها رایگان است. خروجی PNG استاندارد برای طرح کلاسیک رایگان می‌ماند. وقتی کاربر استایل حرفه‌ای انتخاب کند یا خروجی HD/PDF/SVG بخواهد، اپ او را به اشتراک هفتگی هدایت می‌کند. کاربر برای هر خروجی جداگانه پول نمی‌دهد؛ تا زمانی که اشتراک فعال است خروجی‌های حرفه‌ای باز هستند.
+- `app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt` — صفحه‌ها، Drawer و ناوبری
+- `generator/CodeGenerator.kt` — موتور QR/Barcode
+- `export/ExportManager.kt` — ذخیره PNG/PDF/SVG
+- `billing/BillingManager.kt` — اشتراک Pro
+- `data/PreferencesRepository.kt` — تنظیمات و تاریخچه محلی
+- `update/UpdateChecker.kt` — بررسی نسخه جدید
+- `docs/SOURCE_GUIDE_FA.md` — راهنمای فارسی فایل‌ها و معماری
 
-## پرداخت
+## نکته امضا و بروزرسانی
 
-نسخه فعلی Adapter پرداخت Google Play Billing 9.1.0 را دارد و شناسه محصول اشتراک هفتگی `qr_pro_weekly` است. برای انتشار روی کافه‌بازار یا مایکت، Provider پرداخت باید به SDK همان فروشگاه متصل شود، ولی UI و Premium Gate مستقل باقی می‌ماند.
-
-قبل از انتشار عمومی، اعتبار خریدها باید سمت سرور هم Verify شود. پیاده‌سازی فعلی Client-side برای آماده‌سازی UI و فلو اولیه است.
-
-## بروزرسانی و امضا
-
-`applicationId` اصلی از نسخه اول ثابت است:
-
-`com.waxew.qrbarcode`
-
-Debug از `com.waxew.qrbarcode.debug` استفاده می‌کند. یک debug keystore ثابت داخل پروژه وجود دارد تا APKهای تستی GitHub Actions روی نسخه تست قبلی نصب شوند و هر Build امضای متفاوت نداشته باشد. این کلید فقط برای تست است و نباید برای انتشار Store استفاده شود.
-
-Release key عمداً داخل GitHub ذخیره نمی‌شود. برای Build امضاشده Production، Secrets زیر در GitHub Actions تنظیم شوند:
-
-- `QR_KEYSTORE_BASE64`
-- `QR_KEYSTORE_PASSWORD`
-- `QR_KEY_ALIAS`
-- `QR_KEY_PASSWORD`
-
-استفاده از همان Release key در تمام نسخه‌های آینده برای نصب آپدیت روی نسخه قبلی الزامی است.
+برای انتشار واقعی، تمام نسخه‌های بعدی باید با **همان Release Key** و همان `applicationId` امضا شوند و فقط `versionCode`/`versionName` افزایش پیدا کند. کلید خصوصی Release نباید در GitHub عمومی Commit شود. اطلاعات کلید انتشار همراه بسته سورس تحویلی در `info.txt` نگه‌داری می‌شود.
 
 ## Build
 
-نیازمندی‌های فعلی:
-
-- Android Gradle Plugin 9.3.0
-- Gradle 9.5.0
-- Kotlin 2.3.21
-- JDK 17
-- compileSdk 37
-- targetSdk 36
-- minSdk 23
-
-Build محلی:
-
 ```bash
-gradle :app:assembleDebug
+./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-خروجی:
-
-`app/build/outputs/apk/debug/app-debug.apk`
-
-## آپدیت‌خور بودن
-
-نسخه‌های آینده باید `applicationId` و Release signing key را حفظ کنند و فقط `versionCode` و `versionName` افزایش پیدا کند. فایل `distribution/latest.json` مرجع بررسی نسخه جدید درون برنامه است.
+GitHub Actions نیز در `.github/workflows/android.yml` Build را کنترل می‌کند.

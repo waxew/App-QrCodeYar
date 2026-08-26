@@ -1,8 +1,19 @@
+/*
+ * App-QrCodeYar - رابط کاربری اصلی برنامه
+ *
+ * این فایل تقریباً تمام صفحه‌های Compose، منوی همبرگری، ناوبری داخلی، ساخت QR/Barcode،
+ * اسکنر، تنظیمات، صفحه‌های اطلاعاتی و اتصال آن‌ها به سرویس‌های برنامه را کنار هم قرار می‌دهد.
+ *
+ * نکته نگهداری: برای تغییر مسیر صفحات از navigateTo() استفاده کنید تا دکمه Back اندروید
+ * بتواند به صفحه قبلی برگردد و برنامه ناخواسته بسته نشود.
+ */
+
 package com.waxew.qrbarcode.ui
 
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -76,6 +87,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -112,6 +124,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// فهرست همه مقصدهای داخلی برنامه؛ title همان عنوان نوار بالای صفحه است.
 private enum class Screen(val title: String) {
     HOME("خانه"),
     QR("ساخت QR"),
@@ -126,6 +139,7 @@ private enum class Screen(val title: String) {
     ABOUT_APP("درباره نرم افزار")
 }
 
+// نوع داده‌ای که قرار است به payload استاندارد QR تبدیل شود.
 private enum class QrKind(val title: String, val emoji: String, val hint: String) {
     URL("لینک", "🔗", "https://example.com"),
     TEXT("متن", "💬", "متن دلخواه"),
@@ -135,6 +149,7 @@ private enum class QrKind(val title: String, val emoji: String, val hint: String
     SMS("پیامک", "💌", "+49123456789|متن پیام")
 }
 
+// مدل ساده کارت‌های صفحه خانه.
 private data class HomeAction(
     val title: String,
     val subtitle: String,
@@ -154,9 +169,46 @@ fun QrBarcodeApp(
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
         val premiumState by billingManager.state.collectAsStateCompat()
+
+        // مقصد فعلی رابط کاربری. برنامه با خانه آغاز می‌شود.
         var screen by remember { mutableStateOf(Screen.HOME) }
+
+        // تاریخچه مقصدها برای دکمه Back. فقط مقصد قبلی ذخیره می‌شود، نه state داخلی هر فرم.
+        val backStack = remember { mutableStateListOf<Screen>() }
+
+        // اطلاعات نسخه جدید، در صورت وجود، اینجا نگه‌داری می‌شود تا AlertDialog نمایش داده شود.
         var updateInfo by remember { mutableStateOf<com.waxew.qrbarcode.update.UpdateInfo?>(null) }
 
+        // تنها مسیر مجاز برای رفتن به صفحات داخلی؛ با این کار Back رفتار قابل پیش‌بینی دارد.
+        fun navigateTo(target: Screen, clearHistory: Boolean = false) {
+            if (target == screen) {
+                scope.launch { drawerState.close() }
+                return
+            }
+
+            if (clearHistory) {
+                backStack.clear()
+            } else {
+                backStack.add(screen)
+            }
+
+            screen = target
+            scope.launch { drawerState.close() }
+        }
+
+        // اگر Drawer باز است Back ابتدا Drawer را می‌بندد. در صفحات داخلی Back به مقصد قبلی برمی‌گردد.
+        // فقط در صفحه HOME و با Drawer بسته، Back به سیستم سپرده می‌شود تا کاربر واقعاً از برنامه خارج شود.
+        BackHandler(enabled = drawerState.isOpen || screen != Screen.HOME) {
+            if (drawerState.isOpen) {
+                scope.launch { drawerState.close() }
+            } else if (backStack.isNotEmpty()) {
+                screen = backStack.removeAt(backStack.lastIndex)
+            } else {
+                screen = Screen.HOME
+            }
+        }
+
+        // بررسی نسخه جدید در IO انجام می‌شود تا Thread رابط کاربری مسدود نشود.
         LaunchedEffect(Unit) {
             updateInfo = withContext(Dispatchers.IO) { UpdateChecker.check() }
         }
@@ -180,14 +232,17 @@ fun QrBarcodeApp(
             drawerContent = {
                 ModalDrawerSheet {
                     DrawerHeader(premiumState.active)
-                    DrawerItem("خانه", Icons.Default.Home, screen == Screen.HOME) { screen = Screen.HOME }
-                    DrawerItem("اشتراک حرفه‌ای", Icons.Default.Paid, screen == Screen.PREMIUM) { screen = Screen.PREMIUM }
+                    DrawerItem("خانه", Icons.Default.Home, screen == Screen.HOME) { navigateTo(Screen.HOME, clearHistory = true) }
+                    DrawerItem("اشتراک حرفه‌ای", Icons.Default.Paid, screen == Screen.PREMIUM) { navigateTo(Screen.PREMIUM) }
                     HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    DrawerItem("تنظیمات", Icons.Default.Settings, screen == Screen.SETTINGS) { screen = Screen.SETTINGS }
-                    DrawerItem("معرفی به دوستان", Icons.Default.Share, false) { shareApp(activity) }
-                    DrawerItem("درباره ما", Icons.Default.Info, screen == Screen.ABOUT_US) { screen = Screen.ABOUT_US }
-                    DrawerItem("تماس با ما", Icons.Default.ContactSupport, screen == Screen.CONTACT) { screen = Screen.CONTACT }
-                    DrawerItem("درباره نرم افزار", Icons.Default.QrCode, screen == Screen.ABOUT_APP) { screen = Screen.ABOUT_APP }
+                    DrawerItem("تنظیمات", Icons.Default.Settings, screen == Screen.SETTINGS) { navigateTo(Screen.SETTINGS) }
+                    DrawerItem("معرفی به دوستان", Icons.Default.Share, false) {
+                        scope.launch { drawerState.close() }
+                        shareApp(activity)
+                    }
+                    DrawerItem("درباره ما", Icons.Default.Info, screen == Screen.ABOUT_US) { navigateTo(Screen.ABOUT_US) }
+                    DrawerItem("تماس با ما", Icons.Default.ContactSupport, screen == Screen.CONTACT) { navigateTo(Screen.CONTACT) }
+                    DrawerItem("درباره نرم افزار", Icons.Default.QrCode, screen == Screen.ABOUT_APP) { navigateTo(Screen.ABOUT_APP) }
                 }
             }
         ) {
@@ -206,24 +261,24 @@ fun QrBarcodeApp(
             ) { inner ->
                 Box(Modifier.fillMaxSize().padding(inner)) {
                     when (screen) {
-                        Screen.HOME -> HomeScreen(onOpen = { screen = it })
+                        Screen.HOME -> HomeScreen(onOpen = { navigateTo(it) })
                         Screen.QR -> QrMakerScreen(
                             isPremium = premiumState.active,
                             preferences = preferences,
-                            onNeedPremium = { screen = Screen.PREMIUM },
+                            onNeedPremium = { navigateTo(Screen.PREMIUM) },
                             onMessage = { scope.launch { snackbar.showSnackbar(it) } }
                         )
                         Screen.BARCODE -> BarcodeMakerScreen(
                             isPremium = premiumState.active,
                             preferences = preferences,
-                            onNeedPremium = { screen = Screen.PREMIUM },
+                            onNeedPremium = { navigateTo(Screen.PREMIUM) },
                             onMessage = { scope.launch { snackbar.showSnackbar(it) } }
                         )
                         Screen.SCANNER -> ScannerScreen(preferences)
                         Screen.TEMPLATES -> TemplatesScreen(
                             isPremium = premiumState.active,
-                            onOpenMaker = { screen = Screen.QR },
-                            onNeedPremium = { screen = Screen.PREMIUM }
+                            onOpenMaker = { navigateTo(Screen.QR) },
+                            onNeedPremium = { navigateTo(Screen.PREMIUM) }
                         )
                         Screen.HISTORY -> HistoryScreen(preferences)
                         Screen.PREMIUM -> PremiumScreen(activity, billingManager, premiumState)
@@ -238,6 +293,7 @@ fun QrBarcodeApp(
     }
 }
 
+// -------------------- صفحه خانه --------------------
 @Composable
 private fun HomeScreen(onOpen: (Screen) -> Unit) {
     val actions = remember {
@@ -326,6 +382,7 @@ private fun CuteTip() {
     }
 }
 
+// -------------------- سازنده QR --------------------
 @Composable
 private fun QrMakerScreen(
     isPremium: Boolean,
@@ -437,6 +494,7 @@ private fun QrMakerScreen(
     }
 }
 
+// -------------------- سازنده Barcode --------------------
 @Composable
 private fun BarcodeMakerScreen(
     isPremium: Boolean,
@@ -521,6 +579,7 @@ private fun BarcodeMakerScreen(
     }
 }
 
+// -------------------- اسکنر دوربین --------------------
 @Composable
 private fun ScannerScreen(preferences: PreferencesRepository) {
     var lastResult by remember { mutableStateOf<String?>(null) }
@@ -562,6 +621,7 @@ private fun ScannerScreen(preferences: PreferencesRepository) {
     }
 }
 
+// -------------------- قالب‌های آماده --------------------
 @Composable
 private fun TemplatesScreen(isPremium: Boolean, onOpenMaker: () -> Unit, onNeedPremium: () -> Unit) {
     val templates = listOf(
@@ -596,6 +656,7 @@ private fun TemplatesScreen(isPremium: Boolean, onOpenMaker: () -> Unit, onNeedP
     }
 }
 
+// -------------------- تاریخچه محلی --------------------
 @Composable
 private fun HistoryScreen(preferences: PreferencesRepository) {
     val history = remember { preferences.history() }
@@ -630,6 +691,7 @@ private fun HistoryScreen(preferences: PreferencesRepository) {
     }
 }
 
+// -------------------- اشتراک حرفه‌ای --------------------
 @Composable
 private fun PremiumScreen(activity: Activity, billingManager: BillingManager, premiumState: PremiumState) {
     LazyColumn(
@@ -678,16 +740,10 @@ private fun PremiumScreen(activity: Activity, billingManager: BillingManager, pr
             }
         }
         premiumState.message?.let { item { Text(it, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.secondary) } }
-        item {
-            Text(
-                "محصول فروشگاه: ${BillingManager.WEEKLY_PRODUCT_ID}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }
 
+// -------------------- تنظیمات --------------------
 @Composable
 private fun SettingsScreen(preferences: PreferencesRepository) {
     var notifications by remember { mutableStateOf(preferences.notificationsEnabled) }
@@ -727,13 +783,20 @@ private fun ContactScreen() = CenterInfo {
     Text("as.team.support@gmail.com")
 }
 
+// صفحه «درباره نرم افزار» عمداً فقط توضیح کاربرپسند و نسخه را نشان می‌دهد؛
+// هیچ نام پکیج، شناسه فنی، شناسه محصول پرداخت یا اطلاعات توسعه‌ای در این صفحه نمایش داده نمی‌شود.
 @Composable
 private fun AboutAppScreen() = CenterInfo {
     Text("QR ساز و Barcode ساز", fontWeight = FontWeight.Black, fontSize = 22.sp)
     Spacer(Modifier.height(12.dp))
-    Text("ساخت، طراحی، اسکن و خروجی انواع QR و Barcode با امکانات ساده رایگان و ابزارهای حرفه‌ای اشتراکی.", textAlign = TextAlign.Center)
-    Spacer(Modifier.height(12.dp))
-    Text("نسخه ${BuildConfig.VERSION_NAME}")
+    Text(
+        "ابزاری ساده برای ساخت و اسکن QR Code و انواع Barcode.\n" +
+            "می‌توانید کدها را شخصی‌سازی کنید، پیش‌نمایش ببینید و در قالب‌های مختلف خروجی بگیرید.\n" +
+            "بخش‌های پایه رایگان هستند و ابزارهای حرفه‌ای با اشتراک Pro فعال می‌شوند.",
+        textAlign = TextAlign.Center
+    )
+    Spacer(Modifier.height(16.dp))
+    Text("نسخه ${BuildConfig.VERSION_NAME}", fontWeight = FontWeight.Bold)
 }
 
 @Composable
@@ -892,6 +955,8 @@ private fun SettingsRow(
     }
 }
 
+// -------------------- توابع کمکی --------------------
+// داده خام فرم را به payload استاندارد قابل فهم برای اسکنرها تبدیل می‌کند.
 private fun buildQrPayload(kind: QrKind, input: String): String {
     if (input.isBlank()) return ""
     return when (kind) {
@@ -915,6 +980,7 @@ private fun buildQrPayload(kind: QrKind, input: String): String {
 
 private fun escapeWifi(value: String): String = value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace(":", "\\:")
 
+// متن اشتراک برنامه؛ لینک همیشه باید به ریپوی اصلی App-QrCodeYar اشاره کند.
 private fun shareApp(activity: Activity) {
     val text = "QR ساز و Barcode ساز AS Team\nhttps://github.com/waxew/App-QrCodeYar"
     activity.startActivity(

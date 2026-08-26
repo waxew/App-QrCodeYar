@@ -1,3 +1,7 @@
+// تنظیمات ماژول اصلی Android.
+// applicationId ثابت نگه داشته می‌شود تا نسخه‌های بعدی روی نسخه قبلی نصب شوند.
+// Release production فقط زمانی با کلید خصوصی امضا می‌شود که متغیرهای محیطی QR_KEYSTORE_* تنظیم باشند.
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,12 +16,13 @@ android {
         applicationId = "com.waxew.qrbarcode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         vectorDrawables.useSupportLibrary = true
     }
 
+    // کلید debug فقط برای تست است؛ کلید Release داخل GitHub قرار نمی‌گیرد.
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -36,6 +41,7 @@ android {
         }
     }
 
+    // debug شناسه جدا دارد؛ release همان applicationId اصلی را حفظ می‌کند.
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")

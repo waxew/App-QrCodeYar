@@ -1,3 +1,4 @@
+// تعریف نام پروژه، ریپوزیتوری‌های Gradle و ماژول app.
 pluginManagement {
     repositories {
         google()

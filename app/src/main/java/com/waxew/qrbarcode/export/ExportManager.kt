@@ -1,3 +1,8 @@
+/*
+ * مدیریت خروجی فایل‌ها.
+ * PNG در Pictures و PDF/SVG در Downloads ذخیره می‌شوند.
+ * Android 10+ از Scoped Storage/MediaStore استفاده می‌کند و نسخه‌های قدیمی در پوشه اختصاصی برنامه می‌نویسند.
+ */
 package com.waxew.qrbarcode.export
 
 import android.content.ContentValues
@@ -13,6 +18,7 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 
 object ExportManager {
+    // خروجی PNG استاندارد با کیفیت بدون فشرده‌سازی اتلافی.
     fun savePng(context: Context, bitmap: Bitmap, displayName: String): Uri? {
         val name = "$displayName.png"
         return writeMedia(context, name, "image/png", MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Pictures/QRStudio") { out ->
@@ -20,6 +26,7 @@ object ExportManager {
         }
     }
 
+    // خروجی SVG مستقیماً از BitMatrix ساخته می‌شود و برای چاپ برداری مناسب است.
     fun saveSvg(context: Context, matrix: BitMatrix, foreground: Int, background: Int, displayName: String): Uri? {
         val svg = buildSvg(matrix, foreground, background)
         return writeMedia(context, "$displayName.svg", "image/svg+xml", MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio") { out ->
@@ -27,6 +34,7 @@ object ExportManager {
         }
     }
 
+    // خروجی PDF روی یک صفحه استاندارد رسم می‌شود و تصویر در مرکز قرار می‌گیرد.
     fun savePdf(context: Context, bitmap: Bitmap, displayName: String): Uri? {
         val document = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(1240, 1754, 1).create()
@@ -50,6 +58,7 @@ object ExportManager {
         return uri
     }
 
+    // نقطه مشترک تمام عملیات ذخیره‌سازی؛ در خطا، رکورد ناقص MediaStore حذف می‌شود.
     private fun writeMedia(
         context: Context,
         name: String,
@@ -68,7 +77,13 @@ object ExportManager {
             val resolver = context.contentResolver
             val uri = resolver.insert(collection, values) ?: return null
             try {
-                resolver.openOutputStream(uri)?.use(writer) ?: return null
+                // اگر stream ساخته نشود، رکورد pending را پاک می‌کنیم تا فایل شبح در گالری نماند.
+                val stream = resolver.openOutputStream(uri)
+                if (stream == null) {
+                    resolver.delete(uri, null, null)
+                    return null
+                }
+                stream.use(writer)
                 values.clear()
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
@@ -85,6 +100,7 @@ object ExportManager {
         }
     }
 
+    // تبدیل ماتریس ZXing به مستطیل‌های SVG.
     private fun buildSvg(matrix: BitMatrix, foreground: Int, background: Int): String {
         val fg = colorHex(foreground)
         val bg = colorHex(background)

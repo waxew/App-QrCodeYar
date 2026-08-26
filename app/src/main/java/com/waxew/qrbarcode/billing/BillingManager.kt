@@ -1,3 +1,8 @@
+/*
+ * لایه پرداخت اشتراک هفتگی Google Play Billing.
+ * UI مستقیماً با BillingClient کار نمی‌کند و فقط StateFlow این کلاس را مشاهده می‌کند.
+ * برای انتشار در فروشگاه دیگر، همین کلاس محل تعویض provider پرداخت است.
+ */
 package com.waxew.qrbarcode.billing
 
 import android.app.Activity
@@ -18,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 
+// وضعیت قابل مشاهده توسط Compose.
 data class PremiumState(
     val active: Boolean = false,
     val available: Boolean = false,
@@ -25,6 +31,7 @@ data class PremiumState(
     val message: String? = null
 )
 
+// مالک چرخه اتصال BillingClient و اعتبارسنجی اولیه خریدها در سمت کلاینت.
 class BillingManager(context: Context) : PurchasesUpdatedListener {
     companion object {
         const val WEEKLY_PRODUCT_ID = "qr_pro_weekly"
@@ -49,6 +56,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
         connect()
     }
 
+    // اتصال به سرویس صورتحساب و سپس خواندن محصول/خریدهای فعال.
     fun connect() {
         if (billingClient.isReady) {
             refresh()
@@ -68,6 +76,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
         })
     }
 
+    // جزئیات محصول اشتراک هفتگی و قیمت قابل نمایش را می‌گیرد.
     private fun queryProduct() {
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
@@ -92,6 +101,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
         }
     }
 
+    // خریدهای فعال را دوباره استعلام می‌کند؛ در onResume نیز فراخوانی می‌شود.
     fun refresh() {
         if (!billingClient.isReady) return
         val params = QueryPurchasesParams.newBuilder()
@@ -104,6 +114,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
         }
     }
 
+    // پنجره استاندارد خرید فروشگاه را باز می‌کند.
     fun launch(activity: Activity) {
         val details = productDetails
         val offerToken = details?.subscriptionOfferDetails?.firstOrNull()?.offerToken
@@ -130,6 +141,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
         }
     }
 
+    // خرید تکمیل‌شده را پیدا می‌کند و در صورت نیاز acknowledge انجام می‌دهد.
     private fun handlePurchases(purchases: List<Purchase>) {
         val activePurchase = purchases.firstOrNull { purchase ->
             purchase.products.contains(WEEKLY_PRODUCT_ID) &&

@@ -1,3 +1,7 @@
+/*
+ * موتور تولید QR و Barcode بر پایه ZXing.
+ * Finder patternهای QR عمداً کلاسیک نگه داشته می‌شوند تا استایل‌های فانتزی قابلیت اسکن را خراب نکنند.
+ */
 package com.waxew.qrbarcode.generator
 
 import android.graphics.Bitmap
@@ -11,6 +15,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.common.BitMatrix
 
+// استایل‌های CLASSIC رایگان و سایر استایل‌ها Pro هستند.
 enum class ModuleStyle(val title: String, val premium: Boolean) {
     CLASSIC("کلاسیک", false),
     ROUNDED("گرد", true),
@@ -18,6 +23,7 @@ enum class ModuleStyle(val title: String, val premium: Boolean) {
     BUBBLE("حبابی", true)
 }
 
+// نتیجه شامل Bitmap برای نمایش/PNG و BitMatrix برای SVG است.
 data class GeneratedCode(
     val bitmap: Bitmap,
     val matrix: BitMatrix,
@@ -26,6 +32,7 @@ data class GeneratedCode(
 )
 
 object CodeGenerator {
+    // تولید QR با UTF-8، تصحیح خطای H و حاشیه امن.
     fun qr(
         payload: String,
         size: Int = 768,
@@ -43,6 +50,7 @@ object CodeGenerator {
         return GeneratedCode(render(matrix, style, foreground, background), matrix, foreground, background)
     }
 
+    // تولید انواع بارکدهای پشتیبانی‌شده ZXing.
     fun barcode(
         payload: String,
         format: BarcodeFormat,
@@ -60,6 +68,7 @@ object CodeGenerator {
         return GeneratedCode(render(matrix, ModuleStyle.CLASSIC, foreground, background), matrix, foreground, background)
     }
 
+    // BitMatrix را با توجه به استایل انتخاب‌شده روی Bitmap نقاشی می‌کند.
     private fun render(matrix: BitMatrix, style: ModuleStyle, foreground: Int, background: Int): Bitmap {
         val bitmap = Bitmap.createBitmap(matrix.width, matrix.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
@@ -90,6 +99,7 @@ object CodeGenerator {
         return bitmap
     }
 
+    // سه گوشه تشخیص QR کلاسیک باقی می‌مانند تا اسکن پایدار بماند.
     private fun isFinderZone(x: Int, y: Int, width: Int, height: Int): Boolean {
         val zone = (width * 0.25f).toInt().coerceAtLeast(12)
         val topLeft = x < zone && y < zone

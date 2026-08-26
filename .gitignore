@@ -1,3 +1,4 @@
+# فایل‌های محلی/ساخت که نباید در GitHub ذخیره شوند.
 .gradle/
 .idea/
 local.properties
@@ -8,3 +9,10 @@ local.properties
 !app/debug.keystore
 signing.properties
 .DS_Store
+
+# کلید خصوصی انتشار فقط در ZIP تحویلی نگه‌داری می‌شود و نباید وارد GitHub شود.
+signing/
+info.txt
+*.jks
+*.keystore
+!app/debug.keystore

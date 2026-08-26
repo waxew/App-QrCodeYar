@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Manifest اصلی: مجوز اینترنت برای Billing/Update و دوربین برای Scanner. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- تنظیمات سطح اپلیکیشن؛ MainActivity تنها Activity اصلی برنامه است. -->
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
