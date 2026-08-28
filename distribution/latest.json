@@ -1,6 +1,6 @@
 {
-  "versionCode": 3,
-  "versionName": "1.1.0",
+  "versionCode": 9,
+  "versionName": "1.9.0",
   "downloadUrl": "https://github.com/waxew/App-QrCodeYar/releases",
-  "changelog": "QR Studio پیشرفته با گرادیان، لوگو، Finder و قاب؛ Scanner زنده CameraX + ML Kit با Torch/Zoom و چندکدی؛ اسکن از گالری؛ هشدار لینک مشکوک؛ History مبتنی بر Room با مهاجرت داده نسخه قبلی؛ ساخت گروهی CSV/XLSX و PDF لیبل A4؛ پروفایل و Drawer جدید؛ نمایش سه‌رقمی قیمت‌ها."
+  "changelog": "ارتقای یکپارچه QR Designer، قالب‌های هوشمند، Barcode Studio و لیبل فروشگاهی، تنظیمات اسکنر حرفه‌ای، امنیت لینک پیشرفته، بکاپ محلی، مدل Folder/Tag، شخصی‌سازی و قفل PIN برنامه؛ قابلیت‌های قبلی CameraX/ML Kit، Room، Batch و PDF A4 حفظ شده‌اند."
 }
