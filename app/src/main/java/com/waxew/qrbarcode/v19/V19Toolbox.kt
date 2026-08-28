@@ -3,12 +3,16 @@
  */
 package com.waxew.qrbarcode.v19
 
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import com.google.zxing.BarcodeFormat
 import com.waxew.qrbarcode.data.HistoryItem
 import com.waxew.qrbarcode.generator.CodeGenerator
@@ -51,7 +55,7 @@ object SmartTemplateCatalog {
             fields["url"]?.takeIf { it.isNotBlank() }?.let { append("URL:${clean(it)}\n") }
             append("END:VCARD")
         }
-        "restaurant" -> clean(fields["url"])
+        "restaurant" -> normalizeWebUrl(fields["url"].orEmpty())
         "instagram" -> normalizeWebUrl(fields["url"].orEmpty())
         "product" -> buildString {
             append(clean(fields["name"]))
@@ -62,7 +66,7 @@ object SmartTemplateCatalog {
         "location" -> {
             val lat = fields["lat"].orEmpty().trim()
             val lon = fields["lon"].orEmpty().trim()
-            if (lat.toDoubleOrNull() != null && lon.toDoubleOrNull() != null) "geo:$lat,$lon" else clean(fields["url"])
+            if (lat.toDoubleOrNull() != null && lon.toDoubleOrNull() != null) "geo:$lat,$lon" else normalizeWebUrl(fields["url"].orEmpty())
         }
         else -> clean(fields["text"])
     }.take(4000)
@@ -176,10 +180,42 @@ object V19BackupManager {
         return V19BackupPayload(root.optString("settings"), history)
     }
 
+    /**
+     * برای سازگاری UI نام قدیمی متد حفظ شده؛ علاوه بر Cache یک کپی قابل دسترس نیز ذخیره می‌شود.
+     * Android 10+ از MediaStore Downloads/QRStudio استفاده می‌کند؛ نسخه‌های قدیمی‌تر از پوشه
+     * Documents اختصاصی برنامه استفاده می‌کنند و به مجوز Storage عمومی نیاز ندارند.
+     */
     fun saveToCache(context: Context, json: String): File {
-        val file = File(context.cacheDir, "QrCodeYar-backup-${System.currentTimeMillis()}.json")
-        file.writeText(json, Charsets.UTF_8)
-        return file
+        val fileName = "QrCodeYar-backup-${System.currentTimeMillis()}.json"
+        val cacheFile = File(context.cacheDir, fileName).apply { writeText(json, Charsets.UTF_8) }
+        runCatching { savePublicCopy(context, fileName, json) }
+        return cacheFile
+    }
+
+    private fun savePublicCopy(context: Context, fileName: String, json: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/QRStudio")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val resolver = context.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
+            try {
+                resolver.openOutputStream(uri)?.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                    ?: error("خروجی بکاپ قابل نوشتن نیست")
+                values.clear()
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(uri, values, null, null)
+            } catch (t: Throwable) {
+                resolver.delete(uri, null, null)
+                throw t
+            }
+        } else {
+            val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "QRStudio").apply { mkdirs() }
+            File(dir, fileName).writeText(json, Charsets.UTF_8)
+        }
     }
 }
 
