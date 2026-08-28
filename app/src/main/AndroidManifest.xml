@@ -4,13 +4,17 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- تنظیمات سطح اپلیکیشن؛ MainActivity تنها Activity اصلی برنامه است. -->
+    <!-- MainActivity ورودی برنامه است؛ ModernScannerActivity اسکنر داخلی CameraX/ML Kit است. -->
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.QrBarcodeStudio">
+        <activity
+            android:name=".scanner.ModernScannerActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
