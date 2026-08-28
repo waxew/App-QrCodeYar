@@ -2,7 +2,7 @@
  * App-QrCodeYar - تنظیمات سبک + Repository تاریخچه Room
  *
  * History در Room ذخیره می‌شود. نسخه 1.9 علاوه بر Favorite، Folder و Tag واقعی دارد.
- * مهاجرت JSON قدیمی همچنان حفظ شده و داده کاربر هنگام Update از بین نمی‌رود.
+ * مهاجرت JSON قدیمی و Restore بکاپ جدید داده کاربر را هنگام Update حفظ می‌کنند.
  */
 package com.waxew.qrbarcode.data
 
@@ -91,12 +91,7 @@ class PreferencesRepository(context: Context) {
 
     fun updateArchiveMetadata(createdAt: Long, folder: String, tags: String) {
         val safeFolder = folder.trim().take(40)
-        val safeTags = tags.split(',')
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase() }
-            .take(12)
-            .joinToString(",") { it.take(24) }
+        val safeTags = normalizeTags(tags)
         cachedHistory = cachedHistory.map { item ->
             if (item.createdAt == createdAt) item.copy(folder = safeFolder, tags = safeTags) else item
         }
@@ -115,6 +110,45 @@ class PreferencesRepository(context: Context) {
         scope.launch { dao.clear() }
     }
 
+    /**
+     * تاریخچه یک بکاپ معتبر را جایگزین تاریخچه فعلی می‌کند. قبل از نوشتن، رکوردها sanitize
+     * و روی createdAt یکتا می‌شوند تا Primary Key دیتابیس شکسته نشود.
+     */
+    fun restoreHistory(items: List<HistoryItem>) {
+        val sanitized = items.asSequence()
+            .mapIndexed { index, item ->
+                HistoryItem(
+                    kind = item.kind.trim().take(40),
+                    payload = item.payload.trim().take(1000),
+                    createdAt = item.createdAt.takeIf { it > 0 } ?: (System.currentTimeMillis() + index),
+                    favorite = item.favorite,
+                    folder = item.folder.trim().take(40),
+                    tags = normalizeTags(item.tags)
+                )
+            }
+            .filter { it.payload.isNotBlank() }
+            .distinctBy { it.createdAt }
+            .sortedByDescending { it.createdAt }
+            .take(500)
+            .toList()
+
+        cachedHistory = sanitized
+        scope.launch {
+            dao.clear()
+            dao.insertAll(sanitized.map {
+                HistoryEntity(it.createdAt, it.kind, it.payload, it.favorite, it.folder, it.tags)
+            })
+            dao.trimToLatest100()
+        }
+    }
+
+    private fun normalizeTags(tags: String): String = tags.split(',')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .take(12)
+        .joinToString(",") { it.take(24) }
+
     private fun migrateLegacyHistoryOnce() {
         if (prefs.getBoolean("history_room_migrated_v1", false)) return
         scope.launch {
@@ -129,13 +163,13 @@ class PreferencesRepository(context: Context) {
                             if (payload.isBlank()) continue
                             add(
                                 HistoryEntity(
-                                    kind = obj.optString("kind"),
+                                    kind = obj.optString("kind").take(40),
                                     payload = payload,
                                     createdAt = obj.optLong("createdAt").takeIf { it > 0 }
                                         ?: (System.currentTimeMillis() + i),
                                     favorite = obj.optBoolean("favorite", false),
                                     folder = obj.optString("folder", "").take(40),
-                                    tags = obj.optString("tags", "").take(300)
+                                    tags = normalizeTags(obj.optString("tags", ""))
                                 )
                             )
                         }
