@@ -1,12 +1,8 @@
 /*
  * App-QrCodeYar - تنظیمات سبک + Repository تاریخچه Room
  *
- * پروفایل و Toggleهای ساده در SharedPreferences می‌مانند، اما History در Room ذخیره می‌شود.
- * هنگام اولین اجرای نسخه 1.1، تاریخچه JSON نسخه 1.0.1 یک‌بار به Room منتقل می‌شود؛ بنابراین
- * Update برنامه باعث از دست رفتن داده‌های قبلی کاربر نمی‌شود.
- *
- * history() برای سازگاری UI فعلی یک Cache درون‌حافظه‌ای از Flow دیتابیس برمی‌گرداند؛ تغییرات
- * کاربر ابتدا به‌صورت Optimistic روی Cache اعمال و سپس روی Dispatcher.IO در Room ثبت می‌شوند.
+ * History در Room ذخیره می‌شود. نسخه 1.9 علاوه بر Favorite، Folder و Tag واقعی دارد.
+ * مهاجرت JSON قدیمی همچنان حفظ شده و داده کاربر هنگام Update از بین نمی‌رود.
  */
 package com.waxew.qrbarcode.data
 
@@ -25,11 +21,13 @@ data class HistoryItem(
     val kind: String,
     val payload: String,
     val createdAt: Long,
-    val favorite: Boolean = false
+    val favorite: Boolean = false,
+    val folder: String = "",
+    val tags: String = ""
 )
 
 class PreferencesRepository(context: Context) {
-    private val appContext = context.applicationContext
+    val appContext: Context = context.applicationContext
     private val prefs = appContext.getSharedPreferences("qr_studio_preferences", Context.MODE_PRIVATE)
     private val dao = HistoryDatabase.get(appContext).historyDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -37,7 +35,7 @@ class PreferencesRepository(context: Context) {
     @Volatile private var cachedHistory: List<HistoryItem> = emptyList()
 
     val historyFlow: Flow<List<HistoryItem>> = dao.observeAll().map { rows ->
-        rows.map { HistoryItem(it.kind, it.payload, it.createdAt, it.favorite) }
+        rows.map { HistoryItem(it.kind, it.payload, it.createdAt, it.favorite, it.folder, it.tags) }
     }
 
     var notificationsEnabled: Boolean
@@ -64,7 +62,14 @@ class PreferencesRepository(context: Context) {
         if (safePayload.isBlank()) return
         val now = System.currentTimeMillis()
         val previous = cachedHistory.firstOrNull { it.kind == kind && it.payload == safePayload }
-        val newItem = HistoryItem(kind, safePayload, now, previous?.favorite ?: false)
+        val newItem = HistoryItem(
+            kind = kind,
+            payload = safePayload,
+            createdAt = now,
+            favorite = previous?.favorite ?: false,
+            folder = previous?.folder.orEmpty(),
+            tags = previous?.tags.orEmpty()
+        )
         cachedHistory = buildList {
             add(newItem)
             addAll(cachedHistory.filterNot { it.kind == kind && it.payload == safePayload })
@@ -72,7 +77,7 @@ class PreferencesRepository(context: Context) {
 
         scope.launch {
             dao.deleteMatching(kind, safePayload)
-            dao.insert(HistoryEntity(now, kind, safePayload, newItem.favorite))
+            dao.insert(HistoryEntity(now, kind, safePayload, newItem.favorite, newItem.folder, newItem.tags))
             dao.trimToLatest100()
         }
     }
@@ -83,6 +88,22 @@ class PreferencesRepository(context: Context) {
         }
         scope.launch { dao.toggleFavorite(createdAt) }
     }
+
+    fun updateArchiveMetadata(createdAt: Long, folder: String, tags: String) {
+        val safeFolder = folder.trim().take(40)
+        val safeTags = tags.split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+            .take(12)
+            .joinToString(",") { it.take(24) }
+        cachedHistory = cachedHistory.map { item ->
+            if (item.createdAt == createdAt) item.copy(folder = safeFolder, tags = safeTags) else item
+        }
+        scope.launch { dao.updateArchiveMetadata(createdAt, safeFolder, safeTags) }
+    }
+
+    fun folders(): List<String> = cachedHistory.map { it.folder }.filter { it.isNotBlank() }.distinct().sorted()
 
     fun removeHistory(createdAt: Long) {
         cachedHistory = cachedHistory.filterNot { it.createdAt == createdAt }
@@ -112,7 +133,9 @@ class PreferencesRepository(context: Context) {
                                     payload = payload,
                                     createdAt = obj.optLong("createdAt").takeIf { it > 0 }
                                         ?: (System.currentTimeMillis() + i),
-                                    favorite = obj.optBoolean("favorite", false)
+                                    favorite = obj.optBoolean("favorite", false),
+                                    folder = obj.optString("folder", "").take(40),
+                                    tags = obj.optString("tags", "").take(300)
                                 )
                             )
                         }
