@@ -1,10 +1,10 @@
-# CI اصلی پروژه: هر Push روی main یا شاخه‌های توسعه نسخه 1.1 ابتدا Debug و Release را کامپایل می‌کند.
+# CI اصلی پروژه: هر Push روی main ابتدا Debug و Release را کامپایل می‌کند.
 # Release در Runner به‌صورت unsigned + zipaligned آماده می‌شود؛ کلید خصوصی Production هرگز وارد GitHub عمومی نمی‌شود.
 name: Android CI
 
 on:
   push:
-    branches: [ main, feature/v1.1.0-qr-studio, feature/v1.1.0-camerax-room ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
