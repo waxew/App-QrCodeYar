@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.1 (versionCode 10)
+
+- تکمیل اتصال قابلیت‌های نیمه‌کامل 1.9 به جریان واقعی برنامه
+- Folder و Tag واقعی روی Room Database با Migration امن از schema نسخه 1 به 2 و بدون حذف تاریخچه قبلی
+- Archive Manager برای جستجو، فیلتر پوشه و ویرایش Folder/Tag هر رکورد
+- Accent واقعی Material 3 با سه پالت صورتی یاسی، سبز نعنایی و آبی آسمانی
+- Start Page عملی با انتخاب خانه، اسکنر یا مرکز 1.9
+- Scanner جدید متصل به تنظیمات Beep، Vibrate، Continuous Scan و Prevent Duplicates
+- حفظ Scanner قبلی برای سازگاری سورس
+- حذف Reflection از بکاپ محلی و استفاده مستقیم از application context امن Repository
+- اصلاح خطای Compose scoped weight در Scanner جدید
+- applicationId بدون تغییر برای نصب Update روی نسخه قبلی
+
 ## 1.9.0 (versionCode 9)
 
 - تجمیع Roadmap نسخه‌های 1.2 تا 1.9 در یک نسخه

@@ -1,6 +1,6 @@
 {
-  "versionCode": 9,
-  "versionName": "1.9.0",
+  "versionCode": 10,
+  "versionName": "1.9.1",
   "downloadUrl": "https://github.com/waxew/App-QrCodeYar/releases",
-  "changelog": "ارتقای یکپارچه QR Designer، قالب‌های هوشمند، Barcode Studio و لیبل فروشگاهی، تنظیمات اسکنر حرفه‌ای، امنیت لینک پیشرفته، بکاپ محلی، مدل Folder/Tag، شخصی‌سازی و قفل PIN برنامه؛ قابلیت‌های قبلی CameraX/ML Kit، Room، Batch و PDF A4 حفظ شده‌اند."
+  "changelog": "تکمیل یکپارچه‌سازی نسخه 1.9: Folder/Tag واقعی با Room Migration و Archive Manager، Accent واقعی Material 3، انتخاب Start Page، و اتصال تنظیمات Beep/Vibrate/Continuous/Prevent Duplicates به Scanner واقعی CameraX + ML Kit. داده‌های نسخه قبلی حفظ می‌شوند."
 }

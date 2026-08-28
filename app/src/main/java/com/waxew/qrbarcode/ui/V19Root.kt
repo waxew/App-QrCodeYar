@@ -1,15 +1,19 @@
 /*
- * App-QrCodeYar v1.9 - لایه یکپارچه قابلیت‌های جدید
+ * App-QrCodeYar v1.9 - مرکز امکانات یکپارچه
  *
- * برنامه اصلی بدون شکستن ناوبری نسخه 1.1 حفظ می‌شود و مرکز ابزار 1.9 به‌صورت Overlay
- * روی همان ریشه قرار می‌گیرد. این روش ریسک Regression را کاهش می‌دهد و قابلیت‌های جدید را
- * برای کاربر قابل دسترس می‌کند.
+ * در این نسخه قابلیت‌هایی که قبلاً فقط زیرساخت داشتند به جریان واقعی UI وصل شده‌اند:
+ * - Folder/Tag روی Room
+ * - Start Page واقعی: خانه، اسکنر، مرکز 1.9
+ * - Accent واقعی با recreate شدن Activity
+ * - تنظیمات اسکنر متصل به Activity دوربین
  */
 package com.waxew.qrbarcode.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,6 +40,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,8 +53,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.journeyapps.barcodescanner.ScanContract
 import com.waxew.qrbarcode.billing.BillingManager
+import com.waxew.qrbarcode.data.HistoryItem
 import com.waxew.qrbarcode.data.PreferencesRepository
+import com.waxew.qrbarcode.scanner.V19ScannerActivity
 import com.waxew.qrbarcode.v19.ProductLabelRenderer
 import com.waxew.qrbarcode.v19.ProductLabelSpec
 import com.waxew.qrbarcode.v19.SmartTemplateCatalog
@@ -56,6 +65,8 @@ import com.waxew.qrbarcode.v19.V19AppLock
 import com.waxew.qrbarcode.v19.V19BackupManager
 import com.waxew.qrbarcode.v19.V19LinkSecurity
 import com.waxew.qrbarcode.v19.V19SettingsRepository
+
+enum class V19HubPage { HOME, ARCHIVE }
 
 @Composable
 fun QrCodeYarV19Root(
@@ -65,28 +76,50 @@ fun QrCodeYarV19Root(
     settings: V19SettingsRepository,
     appLock: V19AppLock
 ) {
-    var showHub by remember { mutableStateOf(false) }
+    var showHub by remember { mutableStateOf(settings.startPage == "مرکز 1.9") }
+    var hubPage by remember { mutableStateOf(V19HubPage.HOME) }
     var unlocked by remember { mutableStateOf(!settings.appLockEnabled || !appLock.configured) }
     var unlockPin by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        if (settings.startPage == "اسکنر") {
+            activity.startActivity(
+                Intent(activity, V19ScannerActivity::class.java).apply {
+                    putExtra(ScanContract.EXTRA_PROMPT, "اسکنر صفحه شروع")
+                    putExtra(ScanContract.EXTRA_BEEP, settings.scannerBeep)
+                    putExtra(ScanContract.EXTRA_VIBRATE, settings.scannerVibrate)
+                    putExtra(ScanContract.EXTRA_CONTINUOUS, settings.continuousScan)
+                    putExtra(ScanContract.EXTRA_PREVENT_DUPLICATES, settings.preventDuplicates)
+                    putExtra(ScanContract.EXTRA_TORCH, false)
+                }
+            )
+        }
+    }
 
     Box(Modifier.fillMaxSize()) {
         QrBarcodeApp(activity, billingManager, preferences)
 
         FloatingActionButton(
-            onClick = { showHub = true },
+            onClick = { hubPage = V19HubPage.HOME; showHub = true },
             modifier = Modifier.align(Alignment.BottomStart).padding(20.dp)
-        ) {
-            Text("1.9", fontWeight = FontWeight.Black)
-        }
+        ) { Text("1.9", fontWeight = FontWeight.Black) }
 
         if (showHub) {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                V19FeatureHub(
-                    preferences = preferences,
-                    settings = settings,
-                    appLock = appLock,
-                    onClose = { showHub = false }
-                )
+                when (hubPage) {
+                    V19HubPage.HOME -> V19FeatureHub(
+                        activity = activity,
+                        preferences = preferences,
+                        settings = settings,
+                        appLock = appLock,
+                        onArchive = { hubPage = V19HubPage.ARCHIVE },
+                        onClose = { showHub = false }
+                    )
+                    V19HubPage.ARCHIVE -> ArchiveManager(
+                        preferences = preferences,
+                        onBack = { hubPage = V19HubPage.HOME }
+                    )
+                }
             }
         }
     }
@@ -118,9 +151,11 @@ fun QrCodeYarV19Root(
 
 @Composable
 private fun V19FeatureHub(
+    activity: Activity,
     preferences: PreferencesRepository,
     settings: V19SettingsRepository,
     appLock: V19AppLock,
+    onArchive: () -> Unit,
     onClose: () -> Unit
 ) {
     var productName by remember { mutableStateOf("محصول نمونه") }
@@ -140,19 +175,21 @@ private fun V19FeatureHub(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("مرکز امکانات نسخه 1.9", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-                    Text("مجموع قابلیت‌های نسخه‌های پیشنهادی 1.2 تا 1.9")
+                    Text("قابلیت‌های 1.2 تا 1.9 یکپارچه شده‌اند")
                 }
                 TextButton(onClick = onClose) { Text("بستن") }
             }
         }
 
-        item { FeatureCard("🎨 QR Designer", "قالب‌های آماده، طراحی حرفه‌ای، ذخیره الگو، Preview و مسیر توسعه رنگ/قاب/لوگو") }
+        item {
+            FeatureCard("🎨 QR Designer", "QR Studio اصلی همچنان شامل گرادیان، لوگو، Finder، قاب، Undo/Redo و کنترل خوانایی است.")
+        }
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("قالب‌های هوشمند", fontWeight = FontWeight.Black)
                     SmartTemplateCatalog.items.forEach { template ->
-                        Text("${template.emoji} ${template.title}${if (template.premium) "  👑" else ""} — ${template.hint}")
+                        Text("${template.emoji} ${template.title}${if (template.premium) " 👑" else ""} — ${template.hint}")
                     }
                 }
             }
@@ -160,29 +197,19 @@ private fun V19FeatureHub(
 
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("🏷️ Barcode Studio / لیبل فروشگاهی", fontWeight = FontWeight.Black)
-                    OutlinedTextField(productName, { productName = it.take(48) }, modifier = Modifier.fillMaxWidth(), label = { Text("نام محصول") })
-                    OutlinedTextField(productPrice, { productPrice = it.filter(Char::isDigit).take(14) }, modifier = Modifier.fillMaxWidth(), label = { Text("قیمت") })
-                    OutlinedTextField(productCode, { productCode = it.take(64) }, modifier = Modifier.fillMaxWidth(), label = { Text("کد کالا") })
-                    Button(
-                        onClick = {
-                            preview?.recycle()
-                            preview = runCatching {
-                                ProductLabelRenderer.render(
-                                    ProductLabelSpec(productName, productPrice.toLongOrNull() ?: 0L, productCode)
-                                )
-                            }.getOrNull()
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("ساخت پیش‌نمایش لیبل") }
+                    OutlinedTextField(productName, { productName = it.take(48) }, Modifier.fillMaxWidth(), label = { Text("نام محصول") })
+                    OutlinedTextField(productPrice, { productPrice = it.filter(Char::isDigit).take(14) }, Modifier.fillMaxWidth(), label = { Text("قیمت") })
+                    OutlinedTextField(productCode, { productCode = it.take(64) }, Modifier.fillMaxWidth(), label = { Text("کد کالا") })
+                    Button(onClick = {
+                        preview?.recycle()
+                        preview = runCatching {
+                            ProductLabelRenderer.render(ProductLabelSpec(productName, productPrice.toLongOrNull() ?: 0L, productCode))
+                        }.getOrNull()
+                    }, modifier = Modifier.fillMaxWidth()) { Text("ساخت پیش‌نمایش لیبل") }
                     preview?.let { bitmap ->
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "پیش نمایش لیبل",
-                            modifier = Modifier.fillMaxWidth().height(220.dp),
-                            contentScale = ContentScale.Fit
-                        )
+                        Image(bitmap.asImageBitmap(), "پیش نمایش لیبل", Modifier.fillMaxWidth().height(220.dp), contentScale = ContentScale.Fit)
                     }
                 }
             }
@@ -192,7 +219,7 @@ private fun V19FeatureHub(
             Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("🔐 امنیت لینک", fontWeight = FontWeight.Black)
-                    OutlinedTextField(testUrl, { testUrl = it }, modifier = Modifier.fillMaxWidth(), label = { Text("URL برای بررسی") })
+                    OutlinedTextField(testUrl, { testUrl = it }, Modifier.fillMaxWidth(), label = { Text("URL برای بررسی") })
                     val assessment = V19LinkSecurity.assess(testUrl)
                     Text("امتیاز ریسک: ${assessment.score}/100")
                     Text(if (assessment.reasons.isEmpty()) "نشانه مشکوک مشخصی پیدا نشد." else assessment.reasons.joinToString(" • "))
@@ -202,13 +229,14 @@ private fun V19FeatureHub(
 
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("📷 تنظیمات اسکنر حرفه‌ای", fontWeight = FontWeight.Black)
                     ToggleRow("صدای اسکن", settings.scannerBeep) { settings.scannerBeep = it }
                     ToggleRow("لرزش بعد از اسکن", settings.scannerVibrate) { settings.scannerVibrate = it }
                     ToggleRow("اسکن متوالی", settings.continuousScan) { settings.continuousScan = it }
                     ToggleRow("جلوگیری از نتیجه تکراری", settings.preventDuplicates) { settings.preventDuplicates = it }
                     ToggleRow("تأیید قبل از باز کردن لینک", settings.confirmBeforeOpeningLinks) { settings.confirmBeforeOpeningLinks = it }
+                    Text("این گزینه‌ها مستقیم به Scanner Activity متصل هستند.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -217,13 +245,14 @@ private fun V19FeatureHub(
             Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("🗂️ آرشیو، Folder و Tag", fontWeight = FontWeight.Black)
-                    Text("مدل Folder/Tag برای اتصال به Room اضافه شده و تاریخچه فعلی همچنان Search/Filter/Favorite/Delete را حفظ می‌کند.")
-                    Text("رکوردهای فعلی: ${preferences.history().size}")
-                    Button(onClick = {
+                    Text("Folder و Tag داخل Room ذخیره می‌شوند و با بروزرسانی برنامه باقی می‌مانند.")
+                    Text("رکوردهای فعلی: ${preferences.history().size} • پوشه‌ها: ${preferences.folders().size}")
+                    Button(onClick = onArchive, modifier = Modifier.fillMaxWidth()) { Text("مدیریت آرشیو") }
+                    OutlinedButton(onClick = {
                         val json = V19BackupManager.buildJson(preferences.history(), settings)
-                        val file = V19BackupManager.saveToCache((preferences.javaClass.getDeclaredField("appContext").apply { isAccessible = true }.get(preferences) as android.content.Context), json)
+                        val file = V19BackupManager.saveToCache(preferences.appContext, json)
                         message = "بکاپ محلی ساخته شد: ${file.name}"
-                    }) { Text("ساخت بکاپ JSON") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("ساخت بکاپ JSON") }
                 }
             }
         }
@@ -231,14 +260,24 @@ private fun V19FeatureHub(
         item {
             Card(shape = RoundedCornerShape(22.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("✨ شخصی‌سازی", fontWeight = FontWeight.Black)
+                    Text("✨ شخصی‌سازی واقعی", fontWeight = FontWeight.Black)
                     ToggleRow("حالت Compact", settings.compactMode) { settings.compactMode = it }
                     Text("Accent فعلی: ${settings.accentName}")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { settings.accentName = "صورتی یاسی" }) { Text("صورتی") }
-                        OutlinedButton(onClick = { settings.accentName = "سبز نعنایی" }) { Text("نعنایی") }
-                        OutlinedButton(onClick = { settings.accentName = "آبی آسمانی" }) { Text("آبی") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("صورتی یاسی", "سبز نعنایی", "آبی آسمانی").forEach { accent ->
+                            OutlinedButton(onClick = {
+                                settings.accentName = accent
+                                activity.recreate()
+                            }) { Text(accent.substringBefore(' ')) }
+                        }
                     }
+                    Text("صفحه شروع: ${settings.startPage}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("خانه", "اسکنر", "مرکز 1.9").forEach { page ->
+                            OutlinedButton(onClick = { settings.startPage = page }) { Text(page) }
+                        }
+                    }
+                    Text("صفحه شروع در اجرای بعدی برنامه اعمال می‌شود.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -248,9 +287,9 @@ private fun V19FeatureHub(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("🔒 قفل برنامه با PIN", fontWeight = FontWeight.Black)
                     OutlinedTextField(
-                        value = pin,
-                        onValueChange = { pin = it.filter(Char::isDigit).take(8) },
-                        modifier = Modifier.fillMaxWidth(),
+                        pin,
+                        { pin = it.filter(Char::isDigit).take(8) },
+                        Modifier.fillMaxWidth(),
                         label = { Text("PIN چهار تا هشت رقمی") },
                         visualTransformation = PasswordVisualTransformation()
                     )
@@ -272,17 +311,97 @@ private fun V19FeatureHub(
             }
         }
 
-        item { FeatureCard("📚 Batch & Print", "CSV/TXT/XLSX، PNG گروهی و PDF لیبل A4 نسخه قبل حفظ شده و برای Mapping ستونی/ZIP آماده توسعه شده است.") }
-        item { FeatureCard("🛍️ ابزارهای فروشگاهی", "کارت محصول و لیبل فروشگاهی به موتور Barcode متصل شده؛ QR منو، Wi-Fi، شبکه اجتماعی و موقعیت نیز در قالب‌های هوشمند قرار دارند.") }
+        item { FeatureCard("📚 Batch & Print", "CSV/TXT/XLSX، PNG گروهی و PDF لیبل A4 فعال هستند.") }
+        item { FeatureCard("🛍️ ابزارهای فروشگاهی", "لیبل کالا، QR منو، Wi-Fi، شبکه اجتماعی و موقعیت در جریان‌های سازنده موجودند.") }
 
-        if (message.isNotBlank()) {
-            item {
-                Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Text(message, Modifier.fillMaxWidth().padding(14.dp), textAlign = TextAlign.Center)
-                }
+        if (message.isNotBlank()) item {
+            Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                Text(message, Modifier.fillMaxWidth().padding(14.dp), textAlign = TextAlign.Center)
             }
         }
         item { Spacer(Modifier.height(70.dp)) }
+    }
+}
+
+@Composable
+private fun ArchiveManager(preferences: PreferencesRepository, onBack: () -> Unit) {
+    var revision by remember { mutableStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var folderFilter by remember { mutableStateOf("همه") }
+    var editing by remember { mutableStateOf<HistoryItem?>(null) }
+    var folder by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
+
+    val all = remember(revision) { preferences.history() }
+    val folders = remember(all) { listOf("همه") + preferences.folders() }
+    val visible = remember(all, query, folderFilter) {
+        all.filter { item ->
+            (query.isBlank() || item.payload.contains(query, true) || item.tags.contains(query, true) || item.folder.contains(query, true)) &&
+                (folderFilter == "همه" || item.folder == folderFilter)
+        }
+    }
+
+    editing?.let { item ->
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text("پوشه و برچسب") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(folder, { folder = it.take(40) }, label = { Text("پوشه") }, singleLine = true)
+                    OutlinedTextField(tags, { tags = it.take(300) }, label = { Text("Tagها با , جدا شوند") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    preferences.updateArchiveMetadata(item.createdAt, folder, tags)
+                    revision++
+                    editing = null
+                }) { Text("ذخیره") }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text("لغو") } }
+        )
+    }
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("مدیریت آرشیو", Modifier.weight(1f), fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onBack) { Text("بازگشت") }
+            }
+        }
+        item {
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("جستجو در محتوا، پوشه یا Tag") })
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                folders.take(4).forEach { name ->
+                    OutlinedButton(onClick = { folderFilter = name }) { Text(if (name == folderFilter) "✓ $name" else name) }
+                }
+            }
+        }
+        if (visible.isEmpty()) item { Text("رکوردی برای این فیلتر وجود ندارد.") }
+        items(visible, key = { it.createdAt }) { item ->
+            Card(
+                Modifier.fillMaxWidth().clickable {
+                    editing = item
+                    folder = item.folder
+                    tags = item.tags
+                },
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.kind, fontWeight = FontWeight.Bold)
+                    Text(item.payload, maxLines = 2)
+                    Text("پوشه: ${item.folder.ifBlank { "بدون پوشه" }}", style = MaterialTheme.typography.bodySmall)
+                    Text("Tag: ${item.tags.ifBlank { "بدون برچسب" }}", style = MaterialTheme.typography.bodySmall)
+                    Text("برای ویرایش پوشه و Tag روی رکورد بزنید.", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
     }
 }
 

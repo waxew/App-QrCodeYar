@@ -17,8 +17,8 @@ android {
         applicationId = "com.waxew.qrbarcode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.9.0"
+        versionCode = 10
+        versionName = "1.9.1"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -60,12 +60,17 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions { jvmTarget = "17" }
+
     buildFeatures {
         compose = true
         buildConfig = true
     }
-    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
 }
 
 dependencies {
@@ -76,15 +81,21 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
     implementation("com.google.zxing:core:3.5.3")
+
     implementation("androidx.camera:camera-core:1.5.1")
     implementation("androidx.camera:camera-camera2:1.5.1")
     implementation("androidx.camera:camera-lifecycle:1.5.1")
     implementation("androidx.camera:camera-view:1.5.1")
+
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     kapt("androidx.room:room-compiler:2.8.4")
+
     implementation("com.android.billingclient:billing:9.1.0")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
