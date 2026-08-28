@@ -17,13 +17,11 @@ android {
         applicationId = "com.waxew.qrbarcode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.0"
-
+        versionCode = 9
+        versionName = "1.9.0"
         vectorDrawables.useSupportLibrary = true
     }
 
-    // کلید debug فقط برای تست است؛ کلید Release داخل GitHub قرار نمی‌گیرد.
     signingConfigs {
         getByName("debug") {
             storeFile = file("debug.keystore")
@@ -42,7 +40,6 @@ android {
         }
     }
 
-    // debug شناسه جدا دارد؛ release همان applicationId اصلی را حفظ می‌کند.
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
@@ -63,19 +60,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
+    kotlinOptions { jvmTarget = "17" }
     buildFeatures {
         compose = true
         buildConfig = true
     }
-
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
 dependencies {
@@ -86,24 +76,15 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-
     implementation("com.google.zxing:core:3.5.3")
-
-    // CameraX 1.5.1 با compileSdk 35 پروژه سازگار است و Preview/Torch/Zoom را فراهم می‌کند.
     implementation("androidx.camera:camera-core:1.5.1")
     implementation("androidx.camera:camera-camera2:1.5.1")
     implementation("androidx.camera:camera-lifecycle:1.5.1")
     implementation("androidx.camera:camera-view:1.5.1")
-
-    // مدل Barcode ML Kit داخل APK قرار می‌گیرد؛ Scanner برای اجرا به دانلود اولیه وابسته نیست.
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
-
-    // Room جایگزین ذخیره JSON تاریخچه می‌شود؛ migration از SharedPreferences در Repository انجام می‌شود.
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     kapt("androidx.room:room-compiler:2.8.4")
-
     implementation("com.android.billingclient:billing:9.1.0")
-
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
