@@ -2,5 +2,5 @@
   "versionCode": 3,
   "versionName": "1.1.0",
   "downloadUrl": "https://github.com/waxew/App-QrCodeYar/releases",
-  "changelog": "QR Studio پیشرفته با گرادیان، لوگو، Finder و قاب؛ اسکن از گالری و چندکدی؛ هشدار لینک مشکوک؛ ساخت گروهی CSV/XLSX و PDF لیبل A4؛ تاریخچه با جستجو و علاقه‌مندی؛ پروفایل و Drawer جدید؛ نمایش سه‌رقمی قیمت‌ها."
+  "changelog": "QR Studio پیشرفته با گرادیان، لوگو، Finder و قاب؛ Scanner زنده CameraX + ML Kit با Torch/Zoom و چندکدی؛ اسکن از گالری؛ هشدار لینک مشکوک؛ History مبتنی بر Room با مهاجرت داده نسخه قبلی؛ ساخت گروهی CSV/XLSX و PDF لیبل A4؛ پروفایل و Drawer جدید؛ نمایش سه‌رقمی قیمت‌ها."
 }
