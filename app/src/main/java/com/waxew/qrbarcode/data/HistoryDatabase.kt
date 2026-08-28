@@ -1,9 +1,8 @@
 /*
- * App-QrCodeYar - دیتابیس محلی تاریخچه
+ * App-QrCodeYar - دیتابیس محلی تاریخچه و آرشیو
  *
- * Room جایگزین نگه‌داری تاریخچه در یک رشته JSON داخل SharedPreferences شده است. این ساختار
- * برای جستجو، Favorite، حذف و توسعه آینده (Folder/Tag) قابل اتکاتر است. دیتابیس کاملاً آفلاین
- * است و هیچ داده‌ای را Sync یا Upload نمی‌کند.
+ * نسخه 2 دیتابیس، Folder و Tag را به هر رکورد اضافه می‌کند. Migration از نسخه 1 فقط دو
+ * ستون جدید با مقدار خالی می‌سازد؛ بنابراین هیچ تاریخچه، Favorite یا زمان ثبت قبلی حذف نمی‌شود.
  */
 package com.waxew.qrbarcode.data
 
@@ -17,6 +16,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "history_items")
@@ -24,7 +25,9 @@ data class HistoryEntity(
     @PrimaryKey val createdAt: Long,
     val kind: String,
     val payload: String,
-    val favorite: Boolean = false
+    val favorite: Boolean = false,
+    val folder: String = "",
+    val tags: String = ""
 )
 
 @Dao
@@ -53,6 +56,12 @@ interface HistoryDao {
     @Query("UPDATE history_items SET favorite = CASE favorite WHEN 1 THEN 0 ELSE 1 END WHERE createdAt = :createdAt")
     suspend fun toggleFavorite(createdAt: Long)
 
+    @Query("UPDATE history_items SET folder = :folder, tags = :tags WHERE createdAt = :createdAt")
+    suspend fun updateArchiveMetadata(createdAt: Long, folder: String, tags: String)
+
+    @Query("SELECT DISTINCT folder FROM history_items WHERE folder != '' ORDER BY folder COLLATE NOCASE")
+    suspend fun folders(): List<String>
+
     @Query("DELETE FROM history_items")
     suspend fun clear()
 
@@ -60,19 +69,28 @@ interface HistoryDao {
     suspend fun trimToLatest100()
 }
 
-@Database(entities = [HistoryEntity::class], version = 1, exportSchema = false)
+@Database(entities = [HistoryEntity::class], version = 2, exportSchema = false)
 abstract class HistoryDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
     companion object {
         @Volatile private var instance: HistoryDatabase? = null
 
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE history_items ADD COLUMN folder TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE history_items ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): HistoryDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 HistoryDatabase::class.java,
                 "qrcodeyar_history.db"
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2)
+                .build()
+                .also { instance = it }
         }
     }
 }
