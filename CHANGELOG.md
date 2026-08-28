@@ -6,8 +6,10 @@
 - QR Studio: Gradient، Logo، Finder Style، Frame، Transparent Background، Undo/Redo
 - Readability/Contrast checker
 - QR payloadهای vCard/Event/Geo/Social
+- Scanner زنده CameraX + ML Kit با Torch، Zoom و Multi-code
 - اسکن از Gallery و Multi-code image scan
 - لینک‌سنج آفلاین برای URLهای اسکن‌شده
+- مهاجرت History از JSON/SharedPreferences به Room با حفظ داده نسخه 1.0.1
 - Batch QR از CSV/TXT/XLSX
 - A4 label PDF
 - History search/filter/favorite/delete
