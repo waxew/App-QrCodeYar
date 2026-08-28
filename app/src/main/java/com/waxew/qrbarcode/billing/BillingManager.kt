@@ -18,10 +18,10 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.waxew.qrbarcode.util.NumberFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
 
 // وضعیت قابل مشاهده توسط Compose.
 data class PremiumState(
@@ -77,6 +77,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
     }
 
     // جزئیات محصول اشتراک هفتگی و قیمت قابل نمایش را می‌گیرد.
+    // NumberFormatter هر عدد بلند را سه‌رقمی جدا می‌کند؛ مثال: 12000000 -> 12,000,000.
     private fun queryProduct() {
         val params = QueryProductDetailsParams.newBuilder()
             .setProductList(
@@ -96,7 +97,7 @@ class BillingManager(context: Context) : PurchasesUpdatedListener {
             val phase = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()
             _state.value = _state.value.copy(
                 available = productDetails != null,
-                priceText = phase?.formattedPrice?.let { "$it / هفته" } ?: "اشتراک هفتگی"
+                priceText = phase?.formattedPrice?.let { "${NumberFormatter.groupNumbersInText(it)} / هفته" } ?: "اشتراک هفتگی"
             )
         }
     }
