@@ -6,6 +6,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 android {
@@ -87,7 +88,20 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("com.google.zxing:core:3.5.3")
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+
+    // CameraX 1.6.2: پیش‌نمایش دوربین، تحلیل زنده، Torch و Zoom.
+    implementation("androidx.camera:camera-core:1.6.2")
+    implementation("androidx.camera:camera-camera2:1.6.2")
+    implementation("androidx.camera:camera-lifecycle:1.6.2")
+    implementation("androidx.camera:camera-view:1.6.2")
+
+    // مدل Barcode ML Kit داخل APK قرار می‌گیرد؛ Scanner برای اجرا به دانلود اولیه وابسته نیست.
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
+    // Room جایگزین ذخیره JSON تاریخچه می‌شود؛ migration از SharedPreferences در Repository انجام می‌شود.
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    kapt("androidx.room:room-compiler:2.8.4")
 
     implementation("com.android.billingclient:billing:9.1.0")
 
