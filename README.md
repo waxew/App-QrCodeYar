@@ -22,12 +22,14 @@
 - امتیاز خوانایی و Contrast برای کاهش طراحی‌های سخت‌اسکن
 - QR برای لینک، متن، Wi-Fi، ایمیل، تلفن، SMS، vCard، رویداد، موقعیت جغرافیایی و شبکه اجتماعی
 - ساخت Code 128، Code 39، EAN-13، EAN-8، UPC-A، ITF، Codabar، Data Matrix، PDF417 و Aztec
-- اسکن QR/Barcode با دوربین و حالت فلش
+- اسکن زنده با CameraX + ML Kit و نمایش چند QR/Barcode در یک فریم
+- کنترل Torch و Zoom داخل اسکنر
 - اسکن از تصویر گالری و پیدا کردن چند کد در یک تصویر
 - هشدار آفلاین برای برخی نشانه‌های لینک مشکوک قبل از بازکردن URL
 - ساخت گروهی QR از CSV/TXT/XLSX و خروجی PNG گروهی
 - PDF لیبل A4 چندصفحه‌ای برای چاپ گروهی
-- تاریخچه محلی با جستجو، فیلتر، Favorite، حذف تکی و پاک‌کردن همه
+- تاریخچه محلی Room با جستجو، فیلتر، Favorite، حذف تکی و پاک‌کردن همه
+- مهاجرت خودکار تاریخچه JSON نسخه 1.0.1 به Room هنگام اولین اجرای 1.1.0
 - Drawer راست‌چین با عکس پروفایل دایره‌ای، نام کاربر و ابزارهای اختصاصی برنامه
 - تنظیم اعلان‌ها و Dark Mode خودکار
 - Back stack داخلی؛ Back ابتدا به صفحه قبلی برمی‌گردد و فقط از HOME می‌تواند برنامه را ببندد
@@ -40,12 +42,15 @@
 
 - `app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt` — صفحه‌ها، Drawer، ناوبری و اتصال امکانات
 - `generator/CodeGenerator.kt` — موتور QR/Barcode و QR Studio
+- `scanner/ModernScannerActivity.kt` — اسکن زنده CameraX + ML Kit، Torch، Zoom و چندکدی
 - `scanner/ImageCodeDecoder.kt` — اسکن از عکس، چندکدی و تحلیل ایمنی URL
+- `com/journeyapps/barcodescanner/ScanContract.kt` — Compatibility Bridge کوچک برنامه برای حفظ API رابط قبلی؛ کتابخانه JourneyApps دیگر dependency نیست
+- `data/HistoryDatabase.kt` — دیتابیس Room تاریخچه
+- `data/PreferencesRepository.kt` — تنظیمات/پروفایل و Repository تاریخچه با Migration نسخه قدیمی
 - `batch/BatchInputReader.kt` — خواندن CSV/TXT/XLSX برای ساخت گروهی
 - `export/ExportManager.kt` — ذخیره PNG/PDF/SVG و صفحه لیبل A4
 - `billing/BillingManager.kt` — اشتراک Pro
 - `util/NumberFormatter.kt` — جداکردن سه‌رقمی عدد و قیمت
-- `data/PreferencesRepository.kt` — تنظیمات، پروفایل و تاریخچه محلی
 - `update/UpdateChecker.kt` — بررسی نسخه جدید
 - `docs/SOURCE_GUIDE_FA.md` — راهنمای فارسی فایل‌ها و معماری
 
@@ -61,6 +66,10 @@
 ```
 
 در CI این پروژه Gradle 8.9، JDK 17 و Android SDK 35 استفاده می‌شود.
+
+## حریم خصوصی داده‌ها
+
+History در Room و تنظیمات/پروفایل در حافظه محلی دستگاه نگه‌داری می‌شوند. تحلیل اولیه لینک اسکن‌شده نیز آفلاین است و URL برای بررسی به سرویس ثالث ارسال نمی‌شود.
 
 ## محدودیت‌های Backend
 
