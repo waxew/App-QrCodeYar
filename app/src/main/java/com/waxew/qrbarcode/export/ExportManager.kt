@@ -1,13 +1,17 @@
 /*
- * مدیریت خروجی فایل‌ها.
- * PNG در Pictures و PDF/SVG در Downloads ذخیره می‌شوند.
- * Android 10+ از Scoped Storage/MediaStore استفاده می‌کند و نسخه‌های قدیمی در پوشه اختصاصی برنامه می‌نویسند.
+ * App-QrCodeYar - مدیریت خروجی فایل‌ها
+ *
+ * PNG در Pictures/QRStudio و PDF/SVG در Downloads/QRStudio ذخیره می‌شوند. در Android 10+
+ * از Scoped Storage/MediaStore استفاده می‌کنیم و در نسخه‌های قدیمی‌تر پوشه اختصاصی برنامه
+ * استفاده می‌شود. نسخه 1.1 خروجی A4 چندلیبلی برای تولید گروهی QR را نیز اضافه می‌کند.
  */
 package com.waxew.qrbarcode.export
 
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
@@ -18,23 +22,35 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 
 object ExportManager {
-    // خروجی PNG استاندارد با کیفیت بدون فشرده‌سازی اتلافی.
+    // خروجی PNG استاندارد با فشرده‌سازی بدون اتلاف.
     fun savePng(context: Context, bitmap: Bitmap, displayName: String): Uri? {
         val name = "$displayName.png"
-        return writeMedia(context, name, "image/png", MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Pictures/QRStudio") { out ->
+        return writeMedia(
+            context,
+            name,
+            "image/png",
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            "Pictures/QRStudio"
+        ) { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
     }
 
-    // خروجی SVG مستقیماً از BitMatrix ساخته می‌شود و برای چاپ برداری مناسب است.
+    // خروجی SVG از BitMatrix استاندارد. استایل‌های Bitmap مثل لوگو/قاب در SVG کلاسیک وارد نمی‌شوند.
     fun saveSvg(context: Context, matrix: BitMatrix, foreground: Int, background: Int, displayName: String): Uri? {
         val svg = buildSvg(matrix, foreground, background)
-        return writeMedia(context, "$displayName.svg", "image/svg+xml", MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio") { out ->
+        return writeMedia(
+            context,
+            "$displayName.svg",
+            "image/svg+xml",
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            "Download/QRStudio"
+        ) { out ->
             out.write(svg.toByteArray(Charsets.UTF_8))
         }
     }
 
-    // خروجی PDF روی یک صفحه استاندارد رسم می‌شود و تصویر در مرکز قرار می‌گیرد.
+    // خروجی PDF تک‌کد روی صفحه A4 مجازی.
     fun savePdf(context: Context, bitmap: Bitmap, displayName: String): Uri? {
         val document = PdfDocument()
         val pageInfo = PdfDocument.PageInfo.Builder(1240, 1754, 1).create()
@@ -51,14 +67,80 @@ object ExportManager {
         page.canvas.restore()
         document.finishPage(page)
 
-        val uri = writeMedia(context, "$displayName.pdf", "application/pdf", MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio") { out ->
+        val uri = writeMedia(
+            context,
+            "$displayName.pdf",
+            "application/pdf",
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            "Download/QRStudio"
+        ) { out ->
             document.writeTo(out)
         }
         document.close()
         return uri
     }
 
-    // نقطه مشترک تمام عملیات ذخیره‌سازی؛ در خطا، رکورد ناقص MediaStore حذف می‌شود.
+    // خروجی چند QR روی A4؛ هر صفحه 3 ستون × 5 ردیف دارد و برای چاپ لیبل مناسب است.
+    fun saveA4LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? {
+        require(bitmaps.isNotEmpty()) { "حداقل یک QR برای ساخت صفحه لیبل لازم است." }
+        val document = PdfDocument()
+        val pageWidth = 1240
+        val pageHeight = 1754
+        val columns = 3
+        val rows = 5
+        val perPage = columns * rows
+        val margin = 48f
+        val gap = 18f
+        val cellWidth = (pageWidth - margin * 2 - gap * (columns - 1)) / columns
+        val cellHeight = (pageHeight - margin * 2 - gap * (rows - 1)) / rows
+        val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+            color = android.graphics.Color.LTGRAY
+        }
+
+        bitmaps.chunked(perPage).forEachIndexed { pageIndex, pageItems ->
+            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+            val page = document.startPage(pageInfo)
+            pageItems.forEachIndexed { index, bitmap ->
+                val row = index / columns
+                val column = index % columns
+                val left = margin + column * (cellWidth + gap)
+                val top = margin + row * (cellHeight + gap)
+                val cell = RectF(left, top, left + cellWidth, top + cellHeight)
+                page.canvas.drawRoundRect(cell, 12f, 12f, borderPaint)
+
+                val innerPadding = 18f
+                val availableW = cellWidth - innerPadding * 2
+                val availableH = cellHeight - innerPadding * 2
+                val scale = minOf(availableW / bitmap.width, availableH / bitmap.height)
+                val drawW = bitmap.width * scale
+                val drawH = bitmap.height * scale
+                val dest = RectF(
+                    left + (cellWidth - drawW) / 2f,
+                    top + (cellHeight - drawH) / 2f,
+                    left + (cellWidth + drawW) / 2f,
+                    top + (cellHeight + drawH) / 2f
+                )
+                page.canvas.drawBitmap(bitmap, null, dest, null)
+            }
+            document.finishPage(page)
+        }
+
+        val uri = writeMedia(
+            context,
+            "$displayName.pdf",
+            "application/pdf",
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            "Download/QRStudio"
+        ) { out ->
+            document.writeTo(out)
+        }
+        document.close()
+        return uri
+    }
+
+    // نقطه مشترک تمام عملیات ذخیره‌سازی؛ در خطا رکورد ناقص MediaStore پاک می‌شود.
     private fun writeMedia(
         context: Context,
         name: String,
@@ -77,7 +159,6 @@ object ExportManager {
             val resolver = context.contentResolver
             val uri = resolver.insert(collection, values) ?: return null
             try {
-                // اگر stream ساخته نشود، رکورد pending را پاک می‌کنیم تا فایل شبح در گالری نماند.
                 val stream = resolver.openOutputStream(uri)
                 if (stream == null) {
                     resolver.delete(uri, null, null)
@@ -100,14 +181,18 @@ object ExportManager {
         }
     }
 
-    // تبدیل ماتریس ZXing به مستطیل‌های SVG.
+    // تبدیل BitMatrix به SVG کلاسیک و سازگار با چاپ.
     private fun buildSvg(matrix: BitMatrix, foreground: Int, background: Int): String {
         val fg = colorHex(foreground)
-        val bg = colorHex(background)
+        val bg = if (background == android.graphics.Color.TRANSPARENT) "none" else colorHex(background)
         val body = StringBuilder(matrix.width * matrix.height / 2)
         for (y in 0 until matrix.height) {
             for (x in 0 until matrix.width) {
-                if (matrix[x, y]) body.append("<rect x=\"").append(x).append("\" y=\"").append(y).append("\" width=\"1\" height=\"1\"/>")
+                if (matrix[x, y]) {
+                    body.append("<rect x=\"").append(x)
+                        .append("\" y=\"").append(y)
+                        .append("\" width=\"1\" height=\"1\"/>")
+                }
             }
         }
         return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${matrix.width} ${matrix.height}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="$bg"/><g fill="$fg">$body</g></svg>"""
