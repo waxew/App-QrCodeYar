@@ -1,8 +1,8 @@
 /*
- * پالت روشن/تیره برنامه.
+ * پالت روشن/تیره و Compact Mode برنامه.
  *
- * از نسخه 1.9 رنگ Accent ذخیره‌شده واقعاً روی MaterialTheme اعمال می‌شود. انتخاب Dark/Light
- * همچنان از تنظیم سیستم پیروی می‌کند و تغییر Accent بعد از بازسازی Activity/اجرای بعدی دیده می‌شود.
+ * Accent ذخیره‌شده روی MaterialTheme اعمال می‌شود. Compact Mode نیز با کاهش کنترل‌شده
+ * Density رابط، فضای اشغال‌شده کارت‌ها/دکمه‌ها/فاصله‌ها را کمتر می‌کند بدون دستکاری داده‌ها.
  */
 package com.waxew.qrbarcode.ui.theme
 
@@ -12,8 +12,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import com.waxew.qrbarcode.v19.V19SettingsRepository
 
 private fun lightPalette(accent: String): ColorScheme = when (accent) {
@@ -49,9 +52,16 @@ private fun darkPalette(accent: String): ColorScheme = when (accent) {
 @Composable
 fun QrStudioTheme(content: @Composable () -> Unit) {
     val context = LocalContext.current
-    val accent = V19SettingsRepository(context).accentName
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) darkPalette(accent) else lightPalette(accent),
-        content = content
-    )
+    val settings = V19SettingsRepository(context)
+    val currentDensity = LocalDensity.current
+    val effectiveDensity = if (settings.compactMode) {
+        Density(currentDensity.density * 0.92f, currentDensity.fontScale)
+    } else currentDensity
+
+    CompositionLocalProvider(LocalDensity provides effectiveDensity) {
+        MaterialTheme(
+            colorScheme = if (isSystemInDarkTheme()) darkPalette(settings.accentName) else lightPalette(settings.accentName),
+            content = content
+        )
+    }
 }

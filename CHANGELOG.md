@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.2 (versionCode 11)
+
+- تکمیل نهایی Roadmap آفلاین نسخه‌های 1.2 تا 1.9
+- Compact Mode واقعی با کاهش کنترل‌شده Density رابط Compose
+- Smart Templateها از حالت کاتالوگ به Payload Builder واقعی برای Wi-Fi، vCard، رستوران، شبکه اجتماعی، محصول و موقعیت تبدیل شدند
+- Backup schema 2 با حفظ Folder/Tag و تنظیمات
+- Restore امن تنظیمات با لیست سفید کلیدها و بدون بازیابی خودکار PIN
+- Restore واقعی History/Folder/Tag داخل Room با sanitize و deduplicate
+- BackupRestoreActivity برای بازکردن فایل JSON از File Manager و بازیابی محلی
+- سخت‌گیری بیشتر Link Security برای localhost، IP، Punycode، لینک کوتاه، @ و Schemeهای پرخطر
+- Product Label Renderer با ابعاد متغیر و اعتبارسنجی محدوده چاپ
+- CI و Artifactها به 1.9.2 هماهنگ شدند
+- applicationId ثابت ماند تا Update روی نسخه قبلی نصب شود
+
 ## 1.9.1 (versionCode 10)
 
 - تکمیل اتصال قابلیت‌های نیمه‌کامل 1.9 به جریان واقعی برنامه
