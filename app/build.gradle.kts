@@ -89,11 +89,11 @@ dependencies {
 
     implementation("com.google.zxing:core:3.5.3")
 
-    // CameraX 1.6.2: پیش‌نمایش دوربین، تحلیل زنده، Torch و Zoom.
-    implementation("androidx.camera:camera-core:1.6.2")
-    implementation("androidx.camera:camera-camera2:1.6.2")
-    implementation("androidx.camera:camera-lifecycle:1.6.2")
-    implementation("androidx.camera:camera-view:1.6.2")
+    // CameraX 1.5.1 با compileSdk 35 پروژه سازگار است و Preview/Torch/Zoom را فراهم می‌کند.
+    implementation("androidx.camera:camera-core:1.5.1")
+    implementation("androidx.camera:camera-camera2:1.5.1")
+    implementation("androidx.camera:camera-lifecycle:1.5.1")
+    implementation("androidx.camera:camera-view:1.5.1")
 
     // مدل Barcode ML Kit داخل APK قرار می‌گیرد؛ Scanner برای اجرا به دانلود اولیه وابسته نیست.
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
