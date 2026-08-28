@@ -32,13 +32,18 @@ import com.waxew.qrbarcode.v19.V19BackupManager
 import com.waxew.qrbarcode.v19.V19SettingsRepository
 
 class BackupRestoreActivity : ComponentActivity() {
+    private lateinit var preferences: PreferencesRepository
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        preferences = PreferencesRepository(this)
         val inputUri = intent?.data
+
         setContent {
             QrStudioTheme {
                 var message by remember { mutableStateOf("آماده بررسی فایل بکاپ") }
                 var finished by remember { mutableStateOf(false) }
+
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -47,20 +52,21 @@ class BackupRestoreActivity : ComponentActivity() {
                     ) {
                         Text("بازیابی بکاپ QR یار", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
                         Text(message, textAlign = TextAlign.Center)
+
                         if (!finished) {
                             Button(onClick = {
                                 val result = runCatching {
                                     requireNotNull(inputUri) { "فایل بکاپ مشخص نیست." }
-                                    val json = contentResolver.openInputStream(inputUri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
-                                        reader.readText()
-                                    } ?: error("فایل قابل خواندن نیست.")
+                                    val json = contentResolver.openInputStream(inputUri)
+                                        ?.bufferedReader(Charsets.UTF_8)
+                                        ?.use { it.readText() }
+                                        ?: error("فایل قابل خواندن نیست.")
+
                                     val payload = V19BackupManager.parseJson(json)
-                                    val preferences = PreferencesRepository(this@BackupRestoreActivity)
                                     val settings = V19SettingsRepository(this@BackupRestoreActivity)
                                     settings.importSnapshot(payload.settingsSnapshot)
                                     preferences.restoreHistory(payload.history)
-                                    preferences.close()
-                                    "بکاپ با موفقیت بازیابی شد. برنامه را دوباره باز کنید."
+                                    "بکاپ پذیرفته شد و بازیابی در حال ثبت نهایی است. پس از بستن، برنامه را دوباره باز کنید."
                                 }
                                 message = result.getOrElse { "بازیابی انجام نشد: ${it.message ?: "فایل نامعتبر"}" }
                                 finished = true
@@ -72,5 +78,10 @@ class BackupRestoreActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        if (::preferences.isInitialized) preferences.close()
+        super.onDestroy()
     }
 }
