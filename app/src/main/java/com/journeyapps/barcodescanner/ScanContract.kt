@@ -10,7 +10,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContract
-import com.waxew.qrbarcode.scanner.ModernScannerActivity
+import com.waxew.qrbarcode.scanner.V19ScannerActivity
 import com.waxew.qrbarcode.v19.V19SettingsRepository
 
 class ScanOptions {
@@ -44,7 +44,7 @@ class ScanContract : ActivityResultContract<ScanOptions, ScanIntentResult>() {
 
     override fun createIntent(context: Context, input: ScanOptions): Intent {
         val settings = V19SettingsRepository(context)
-        return Intent(context, ModernScannerActivity::class.java).apply {
+        return Intent(context, V19ScannerActivity::class.java).apply {
             putExtra(EXTRA_PROMPT, input.prompt)
             putExtra(EXTRA_BEEP, input.beepEnabled ?: settings.scannerBeep)
             putExtra(EXTRA_VIBRATE, settings.scannerVibrate)
