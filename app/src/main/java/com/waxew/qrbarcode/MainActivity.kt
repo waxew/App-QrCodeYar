@@ -16,11 +16,14 @@ class MainActivity : ComponentActivity() {
     // کلاینت پرداخت تا پایان عمر Activity نگه داشته می‌شود.
     private lateinit var billingManager: BillingManager
 
+    // Repository تاریخچه/تنظیمات تا پایان عمر Activity نگه داشته می‌شود.
+    private lateinit var preferences: PreferencesRepository
+
     // Android این متد را هنگام ایجاد Activity فراخوانی می‌کند.
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         billingManager = BillingManager(this)
-        val preferences = PreferencesRepository(this)
+        preferences = PreferencesRepository(this)
         setContent {
             QrStudioTheme {
                 QrBarcodeApp(
@@ -38,9 +41,10 @@ class MainActivity : ComponentActivity() {
         if (::billingManager.isInitialized) billingManager.refresh()
     }
 
-    // اتصال Billing در پایان Activity آزاد می‌شود تا resource leak ایجاد نشود.
+    // اتصال‌های طولانی‌عمر در پایان Activity آزاد می‌شوند تا resource leak ایجاد نشود.
     override fun onDestroy() {
         if (::billingManager.isInitialized) billingManager.close()
+        if (::preferences.isInitialized) preferences.close()
         super.onDestroy()
     }
 }
