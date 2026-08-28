@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 (versionCode 9)
+
+- تجمیع Roadmap نسخه‌های 1.2 تا 1.9 در یک نسخه
+- مرکز امکانات 1.9 روی برنامه اصلی بدون حذف قابلیت‌های قبلی
+- Smart Template Catalog برای Wi-Fi، کارت ویزیت، رستوران، شبکه اجتماعی، محصول و موقعیت
+- Barcode Studio فروشگاهی با ساخت پیش‌نمایش لیبل شامل نام، قیمت و کد کالا
+- سیاست امنیت URL پیشرفته‌تر: HTTP، IP مستقیم، Punycode، @ و لینک‌های کوتاه‌شده
+- تنظیمات اسکنر برای Beep، لرزش، اسکن متوالی، جلوگیری از تکرار و تأیید قبل از بازکردن لینک
+- بکاپ محلی JSON از تاریخچه و تنظیمات 1.9
+- مدل توسعه Archive Folder و Tag برای اتصال به Room
+- شخصی‌سازی Compact Mode، Accent و Start Page در Repository نسخه 1.9
+- قفل برنامه با PIN چهار تا هشت رقمی؛ فقط SHA-256 PIN ذخیره می‌شود
+- حفظ QR Studio، CameraX + ML Kit، اسکن گالری، Room History، Batch CSV/TXT/XLSX و PDF لیبل A4 نسخه قبل
+- applicationId ثابت برای حفظ مسیر Update
+
 ## 1.1.0 (versionCode 3)
 
 - قالب‌بندی سه‌رقمی قیمت‌ها
@@ -14,7 +29,6 @@
 - A4 label PDF
 - History search/filter/favorite/delete
 - Drawer جدید با پروفایل کاربر و ابزارهای اختصاصی
-- About/Contact به‌روزرسانی‌شده
 
 ## 1.0.1 (versionCode 2)
 
