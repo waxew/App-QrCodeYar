@@ -1,6 +1,6 @@
 {
-  "versionCode": 10,
-  "versionName": "1.9.1",
+  "versionCode": 11,
+  "versionName": "1.9.2",
   "downloadUrl": "https://github.com/waxew/App-QrCodeYar/releases",
-  "changelog": "تکمیل یکپارچه‌سازی نسخه 1.9: Folder/Tag واقعی با Room Migration و Archive Manager، Accent واقعی Material 3، انتخاب Start Page، و اتصال تنظیمات Beep/Vibrate/Continuous/Prevent Duplicates به Scanner واقعی CameraX + ML Kit. داده‌های نسخه قبلی حفظ می‌شوند."
+  "changelog": "تکمیل نهایی نسخه آفلاین 1.9: Compact Mode واقعی، Smart Template Payload Builder، Backup schema 2 با Folder/Tag، Restore امن تنظیمات و تاریخچه Room از فایل JSON، سخت‌گیری بیشتر Link Security و Product Label با ابعاد متغیر."
 }
