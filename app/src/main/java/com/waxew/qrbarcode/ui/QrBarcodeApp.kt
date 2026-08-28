@@ -1,20 +1,26 @@
 /*
  * App-QrCodeYar - رابط کاربری اصلی برنامه
  *
- * این فایل تقریباً تمام صفحه‌های Compose، منوی همبرگری، ناوبری داخلی، ساخت QR/Barcode،
- * اسکنر، تنظیمات، صفحه‌های اطلاعاتی و اتصال آن‌ها به سرویس‌های برنامه را کنار هم قرار می‌دهد.
+ * این فایل صفحه‌های Compose، Drawer راست‌چین، ناوبری داخلی، QR Studio، Barcode، Scanner،
+ * Batch Tools، تاریخچه، تنظیمات، اشتراک و صفحه‌های اطلاعاتی را به هم متصل می‌کند.
  *
- * نکته نگهداری: برای تغییر مسیر صفحات از navigateTo() استفاده کنید تا دکمه Back اندروید
- * بتواند به صفحه قبلی برگردد و برنامه ناخواسته بسته نشود.
+ * قانون مهم ناوبری: رفتن به هر صفحه باید از navigateTo() انجام شود تا Back اندروید ابتدا
+ * به صفحه قبلی برگردد و فقط از HOME باعث خروج برنامه شود.
  */
-
 package com.waxew.qrbarcode.ui
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,26 +49,42 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ContactSupport
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Redo
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.TableRows
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -81,12 +103,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -98,25 +119,35 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalLayoutDirection
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.waxew.qrbarcode.BuildConfig
+import com.waxew.qrbarcode.batch.BatchInputReader
 import com.waxew.qrbarcode.billing.BillingManager
 import com.waxew.qrbarcode.billing.PremiumState
 import com.waxew.qrbarcode.data.PreferencesRepository
 import com.waxew.qrbarcode.export.ExportManager
 import com.waxew.qrbarcode.generator.CodeGenerator
+import com.waxew.qrbarcode.generator.FinderStyle
+import com.waxew.qrbarcode.generator.FrameStyle
 import com.waxew.qrbarcode.generator.GeneratedCode
 import com.waxew.qrbarcode.generator.ModuleStyle
+import com.waxew.qrbarcode.generator.QrDesign
+import com.waxew.qrbarcode.scanner.DecodedImageCode
+import com.waxew.qrbarcode.scanner.ImageCodeDecoder
+import com.waxew.qrbarcode.scanner.LinkRiskLevel
+import com.waxew.qrbarcode.scanner.ScanSafetyAnalyzer
 import com.waxew.qrbarcode.update.UpdateChecker
+import com.waxew.qrbarcode.util.NumberFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -124,12 +155,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// فهرست همه مقصدهای داخلی برنامه؛ title همان عنوان نوار بالای صفحه است.
+// همه مقصدهای داخلی برنامه. title عنوان TopAppBar است.
 private enum class Screen(val title: String) {
     HOME("خانه"),
-    QR("ساخت QR"),
+    QR("استودیوی QR"),
     BARCODE("ساخت Barcode"),
     SCANNER("اسکنر"),
+    BATCH("ساخت گروهی"),
     TEMPLATES("طرح‌های آماده"),
     HISTORY("تاریخچه"),
     PREMIUM("اشتراک حرفه‌ای"),
@@ -139,23 +171,45 @@ private enum class Screen(val title: String) {
     ABOUT_APP("درباره نرم افزار")
 }
 
-// نوع داده‌ای که قرار است به payload استاندارد QR تبدیل شود.
+// انواع payload قابل ساخت. hint قالب ورودی را به کاربر توضیح می‌دهد.
 private enum class QrKind(val title: String, val emoji: String, val hint: String) {
     URL("لینک", "🔗", "https://example.com"),
     TEXT("متن", "💬", "متن دلخواه"),
     WIFI("Wi-Fi", "📶", "SSID|PASSWORD"),
     EMAIL("ایمیل", "✉️", "name@example.com"),
-    PHONE("تلفن", "📞", "+49123456789"),
-    SMS("پیامک", "💌", "+49123456789|متن پیام")
+    PHONE("تلفن", "📞", "+989121234567"),
+    SMS("پیامک", "💌", "+989121234567|متن پیام"),
+    VCARD("مخاطب", "🪪", "نام|تلفن|ایمیل|سازمان|وبسایت"),
+    EVENT("رویداد", "📅", "عنوان|20260901T090000|20260901T100000|مکان"),
+    GEO("موقعیت", "📍", "35.6892,51.3890"),
+    SOCIAL("شبکه اجتماعی", "💗", "https://instagram.com/example")
 }
 
-// مدل ساده کارت‌های صفحه خانه.
 private data class HomeAction(
     val title: String,
     val subtitle: String,
     val emoji: String,
     val screen: Screen
 )
+
+// State قابل Undo/Redo برای گزینه‌های طراحی QR.
+private data class QrDesignState(
+    val moduleStyle: ModuleStyle = ModuleStyle.CLASSIC,
+    val finderStyle: FinderStyle = FinderStyle.CLASSIC,
+    val foreground: Int = AndroidColor.rgb(42, 34, 55),
+    val gradientEnd: Int = AndroidColor.rgb(129, 103, 180),
+    val gradientEnabled: Boolean = false,
+    val background: Int = AndroidColor.WHITE,
+    val transparentBackground: Boolean = false,
+    val frameStyle: FrameStyle = FrameStyle.NONE,
+    val frameText: String = "",
+    val logoUri: String? = null
+) {
+    fun professional(): Boolean =
+        moduleStyle.premium || finderStyle.premium || gradientEnabled || transparentBackground ||
+            frameStyle.premium || logoUri != null || background != AndroidColor.WHITE ||
+            foreground != AndroidColor.rgb(42, 34, 55)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -165,39 +219,43 @@ fun QrBarcodeApp(
     preferences: PreferencesRepository
 ) {
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        val context = LocalContext.current
         val drawerState = rememberDrawerState(DrawerValue.Closed)
         val scope = rememberCoroutineScope()
         val snackbar = remember { SnackbarHostState() }
         val premiumState by billingManager.state.collectAsStateCompat()
 
-        // مقصد فعلی رابط کاربری. برنامه با خانه آغاز می‌شود.
         var screen by remember { mutableStateOf(Screen.HOME) }
-
-        // تاریخچه مقصدها برای دکمه Back. فقط مقصد قبلی ذخیره می‌شود، نه state داخلی هر فرم.
         val backStack = remember { mutableStateListOf<Screen>() }
-
-        // اطلاعات نسخه جدید، در صورت وجود، اینجا نگه‌داری می‌شود تا AlertDialog نمایش داده شود.
         var updateInfo by remember { mutableStateOf<com.waxew.qrbarcode.update.UpdateInfo?>(null) }
 
-        // تنها مسیر مجاز برای رفتن به صفحات داخلی؛ با این کار Back رفتار قابل پیش‌بینی دارد.
+        // State پروفایل Drawer از SharedPreferences آغاز می‌شود و بعد از ویرایش همان لحظه UI را آپدیت می‌کند.
+        var profileName by remember { mutableStateOf(preferences.profileName) }
+        var profileImageUri by remember { mutableStateOf(preferences.profileImageUri) }
+        var showNameDialog by remember { mutableStateOf(false) }
+        var editingName by remember { mutableStateOf(profileName) }
+
+        val profilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                profileImageUri = uri.toString()
+                preferences.profileImageUri = profileImageUri
+            }
+        }
+        val profileBitmap = remember(profileImageUri) { loadLocalBitmap(context, profileImageUri, 640) }
+
         fun navigateTo(target: Screen, clearHistory: Boolean = false) {
             if (target == screen) {
                 scope.launch { drawerState.close() }
                 return
             }
-
-            if (clearHistory) {
-                backStack.clear()
-            } else {
-                backStack.add(screen)
-            }
-
+            if (clearHistory) backStack.clear() else backStack.add(screen)
             screen = target
             scope.launch { drawerState.close() }
         }
 
-        // اگر Drawer باز است Back ابتدا Drawer را می‌بندد. در صفحات داخلی Back به مقصد قبلی برمی‌گردد.
-        // فقط در صفحه HOME و با Drawer بسته، Back به سیستم سپرده می‌شود تا کاربر واقعاً از برنامه خارج شود.
         BackHandler(enabled = drawerState.isOpen || screen != Screen.HOME) {
             if (drawerState.isOpen) {
                 scope.launch { drawerState.close() }
@@ -208,7 +266,6 @@ fun QrBarcodeApp(
             }
         }
 
-        // بررسی نسخه جدید در IO انجام می‌شود تا Thread رابط کاربری مسدود نشود.
         LaunchedEffect(Unit) {
             updateInfo = withContext(Dispatchers.IO) { UpdateChecker.check() }
         }
@@ -221,28 +278,76 @@ fun QrBarcodeApp(
                 confirmButton = {
                     Button(onClick = { UpdateChecker.openDownload(activity, info) }) { Text("دریافت بروزرسانی") }
                 },
-                dismissButton = {
-                    TextButton(onClick = { updateInfo = null }) { Text("بعداً") }
-                }
+                dismissButton = { TextButton(onClick = { updateInfo = null }) { Text("بعداً") } }
+            )
+        }
+
+        if (showNameDialog) {
+            AlertDialog(
+                onDismissRequest = { showNameDialog = false },
+                title = { Text("نام نمایشی") },
+                text = {
+                    OutlinedTextField(
+                        value = editingName,
+                        onValueChange = { editingName = it.take(40) },
+                        singleLine = true,
+                        label = { Text("نام کاربر") }
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        profileName = editingName.trim().ifBlank { "کاربر" }
+                        preferences.profileName = profileName
+                        showNameDialog = false
+                    }) { Text("ذخیره") }
+                },
+                dismissButton = { TextButton(onClick = { showNameDialog = false }) { Text("لغو") } }
             )
         }
 
         ModalNavigationDrawer(
             drawerState = drawerState,
             drawerContent = {
-                ModalDrawerSheet {
-                    DrawerHeader(premiumState.active)
-                    DrawerItem("خانه", Icons.Default.Home, screen == Screen.HOME) { navigateTo(Screen.HOME, clearHistory = true) }
-                    DrawerItem("اشتراک حرفه‌ای", Icons.Default.Paid, screen == Screen.PREMIUM) { navigateTo(Screen.PREMIUM) }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    DrawerItem("تنظیمات", Icons.Default.Settings, screen == Screen.SETTINGS) { navigateTo(Screen.SETTINGS) }
-                    DrawerItem("معرفی به دوستان", Icons.Default.Share, false) {
-                        scope.launch { drawerState.close() }
-                        shareApp(activity)
+                ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.88f)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 10.dp)
+                    ) {
+                        item {
+                            DrawerProfileHeader(
+                                premium = premiumState.active,
+                                profileName = profileName,
+                                profileBitmap = profileBitmap,
+                                onPickImage = { profilePicker.launch(arrayOf("image/*")) },
+                                onEditName = {
+                                    editingName = profileName
+                                    showNameDialog = true
+                                }
+                            )
+                        }
+                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                        item { DrawerSectionLabel("ابزارهای برنامه") }
+                        item { DrawerItem("خانه", Icons.Default.Home, screen == Screen.HOME) { navigateTo(Screen.HOME, true) } }
+                        item { DrawerItem("استودیوی QR", Icons.Default.QrCode, screen == Screen.QR) { navigateTo(Screen.QR) } }
+                        item { DrawerItem("ساخت Barcode", Icons.Default.TableRows, screen == Screen.BARCODE) { navigateTo(Screen.BARCODE) } }
+                        item { DrawerItem("اسکنر", Icons.Default.QrCodeScanner, screen == Screen.SCANNER) { navigateTo(Screen.SCANNER) } }
+                        item { DrawerItem("ساخت گروهی", Icons.Default.FileDownload, screen == Screen.BATCH) { navigateTo(Screen.BATCH) } }
+                        item { DrawerItem("تاریخچه", Icons.Default.History, screen == Screen.HISTORY) { navigateTo(Screen.HISTORY) } }
+                        item { DrawerItem("اشتراک حرفه‌ای", Icons.Default.Paid, screen == Screen.PREMIUM) { navigateTo(Screen.PREMIUM) } }
+                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                        item { DrawerItem("تنظیمات", Icons.Default.Settings, screen == Screen.SETTINGS) { navigateTo(Screen.SETTINGS) } }
+                        item {
+                            DrawerItem("معرفی به دوستان", Icons.Default.Share, false) {
+                                scope.launch { drawerState.close() }
+                                shareApp(activity)
+                            }
+                        }
+                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                        item { DrawerSectionLabel("ارتباط با ما") }
+                        item { DrawerItem("درباره ما", Icons.Default.Info, screen == Screen.ABOUT_US) { navigateTo(Screen.ABOUT_US) } }
+                        item { DrawerItem("تماس با ما", Icons.Default.ContactSupport, screen == Screen.CONTACT) { navigateTo(Screen.CONTACT) } }
+                        item { DrawerItem("درباره نرم افزار", Icons.Default.QrCode, screen == Screen.ABOUT_APP) { navigateTo(Screen.ABOUT_APP) } }
                     }
-                    DrawerItem("درباره ما", Icons.Default.Info, screen == Screen.ABOUT_US) { navigateTo(Screen.ABOUT_US) }
-                    DrawerItem("تماس با ما", Icons.Default.ContactSupport, screen == Screen.CONTACT) { navigateTo(Screen.CONTACT) }
-                    DrawerItem("درباره نرم افزار", Icons.Default.QrCode, screen == Screen.ABOUT_APP) { navigateTo(Screen.ABOUT_APP) }
                 }
             }
         ) {
@@ -274,7 +379,16 @@ fun QrBarcodeApp(
                             onNeedPremium = { navigateTo(Screen.PREMIUM) },
                             onMessage = { scope.launch { snackbar.showSnackbar(it) } }
                         )
-                        Screen.SCANNER -> ScannerScreen(preferences)
+                        Screen.SCANNER -> ScannerScreen(
+                            preferences = preferences,
+                            onMessage = { scope.launch { snackbar.showSnackbar(it) } }
+                        )
+                        Screen.BATCH -> BatchToolsScreen(
+                            isPremium = premiumState.active,
+                            preferences = preferences,
+                            onNeedPremium = { navigateTo(Screen.PREMIUM) },
+                            onMessage = { scope.launch { snackbar.showSnackbar(it) } }
+                        )
                         Screen.TEMPLATES -> TemplatesScreen(
                             isPremium = premiumState.active,
                             onOpenMaker = { navigateTo(Screen.QR) },
@@ -282,7 +396,14 @@ fun QrBarcodeApp(
                         )
                         Screen.HISTORY -> HistoryScreen(preferences)
                         Screen.PREMIUM -> PremiumScreen(activity, billingManager, premiumState)
-                        Screen.SETTINGS -> SettingsScreen(preferences)
+                        Screen.SETTINGS -> SettingsScreen(
+                            preferences = preferences,
+                            onEditProfileName = {
+                                editingName = profileName
+                                showNameDialog = true
+                            },
+                            onPickProfileImage = { profilePicker.launch(arrayOf("image/*")) }
+                        )
                         Screen.ABOUT_US -> AboutUsScreen()
                         Screen.CONTACT -> ContactScreen()
                         Screen.ABOUT_APP -> AboutAppScreen()
@@ -298,11 +419,12 @@ fun QrBarcodeApp(
 private fun HomeScreen(onOpen: (Screen) -> Unit) {
     val actions = remember {
         listOf(
-            HomeAction("ساخت QR", "لینک، متن، Wi-Fi و بیشتر", "🧩", Screen.QR),
+            HomeAction("استودیوی QR", "لوگو، گرادیان، قاب و استایل", "🧩", Screen.QR),
             HomeAction("ساخت Barcode", "Code 128، EAN، PDF417...", "🏷️", Screen.BARCODE),
-            HomeAction("اسکن کد", "QR و بارکد را سریع بخوان", "🔎", Screen.SCANNER),
-            HomeAction("طرح‌های آماده", "قالب‌های کیوت و کاربردی", "🎀", Screen.TEMPLATES),
-            HomeAction("تاریخچه", "کدهای اخیرت را ببین", "🕘", Screen.HISTORY),
+            HomeAction("اسکن کد", "دوربین، فلش و اسکن از عکس", "🔎", Screen.SCANNER),
+            HomeAction("ساخت گروهی", "CSV / XLSX و صفحه لیبل A4", "📚", Screen.BATCH),
+            HomeAction("طرح‌های آماده", "قالب‌های کاربردی و فانتزی", "🎀", Screen.TEMPLATES),
+            HomeAction("تاریخچه", "جستجو، فیلتر و علاقه‌مندی", "🕘", Screen.HISTORY),
             HomeAction("حرفه‌ای", "خروجی HD، PDF و SVG", "👑", Screen.PREMIUM)
         )
     }
@@ -311,15 +433,13 @@ private fun HomeScreen(onOpen: (Screen) -> Unit) {
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            HeroCard()
-        }
+        item { HeroCard() }
         item {
             Text("چی می‌خوای بسازی؟", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(10.dp))
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
-                modifier = Modifier.height(470.dp),
+                modifier = Modifier.height(620.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 userScrollEnabled = false
@@ -327,9 +447,7 @@ private fun HomeScreen(onOpen: (Screen) -> Unit) {
                 items(actions) { action -> HomeActionCard(action) { onOpen(action.screen) } }
             }
         }
-        item {
-            CuteTip()
-        }
+        item { CuteTip() }
     }
 }
 
@@ -349,8 +467,8 @@ private fun HeroCard() {
             ) { Text("(｡•̀ᴗ-)✧", fontSize = 18.sp) }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text("استودیوی کوچولوی کدها", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
-                Text("بساز، خوشگلش کن، اسکن کن و خروجی بگیر.", style = MaterialTheme.typography.bodyMedium)
+                Text("QR یار • استودیوی کد", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Black)
+                Text("بساز، شخصی‌سازی کن، گروهی خروجی بگیر و امن‌تر اسکن کن.", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -377,12 +495,12 @@ private fun CuteTip() {
         Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("🐣", fontSize = 30.sp)
             Spacer(Modifier.width(12.dp))
-            Text("QRهای حرفه‌ای قبل از خروجی با برچسب Pro مشخص می‌شوند؛ ساخت و تست ساده همیشه رایگان می‌ماند.")
+            Text("برای QRهای لوگودار یا رنگی، امتیاز خوانایی را چک کن و قبل از چاپ یک اسکن واقعی بگیر.")
         }
     }
 }
 
-// -------------------- سازنده QR --------------------
+// -------------------- QR Studio --------------------
 @Composable
 private fun QrMakerScreen(
     isPremium: Boolean,
@@ -393,21 +511,77 @@ private fun QrMakerScreen(
     val context = LocalContext.current
     var kind by remember { mutableStateOf(QrKind.URL) }
     var input by remember { mutableStateOf("https://") }
-    var style by remember { mutableStateOf(ModuleStyle.CLASSIC) }
-    var fg by remember { mutableStateOf(AndroidColor.rgb(42, 34, 55)) }
-    val bg = AndroidColor.WHITE
-    val payload = remember(kind, input) { buildQrPayload(kind, input) }
-    val generated = remember(payload, style, fg) {
-        runCatching { CodeGenerator.qr(payload, style = style, foreground = fg, background = bg) }
+    var design by remember { mutableStateOf(QrDesignState()) }
+    val undoStack = remember { mutableStateListOf<QrDesignState>() }
+    val redoStack = remember { mutableStateListOf<QrDesignState>() }
+
+    fun commit(next: QrDesignState) {
+        if (next == design) return
+        undoStack.add(design)
+        if (undoStack.size > 30) undoStack.removeAt(0)
+        redoStack.clear()
+        design = next
     }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        redoStack.add(design)
+        design = undoStack.removeAt(undoStack.lastIndex)
+    }
+
+    fun redo() {
+        if (redoStack.isEmpty()) return
+        undoStack.add(design)
+        design = redoStack.removeAt(redoStack.lastIndex)
+    }
+
+    val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            commit(design.copy(logoUri = uri.toString()))
+        }
+    }
+
+    val logoBitmap = remember(design.logoUri) { loadLocalBitmap(context, design.logoUri, 768) }
+    val generatorDesign = remember(design, logoBitmap) {
+        QrDesign(
+            moduleStyle = design.moduleStyle,
+            finderStyle = design.finderStyle,
+            foreground = design.foreground,
+            gradientEnd = design.gradientEnd,
+            gradientEnabled = design.gradientEnabled,
+            background = design.background,
+            transparentBackground = design.transparentBackground,
+            frameStyle = design.frameStyle,
+            frameText = design.frameText,
+            logo = logoBitmap
+        )
+    }
+    val payload = remember(kind, input) { buildQrPayload(kind, input) }
+    val generated = remember(payload, generatorDesign) {
+        runCatching { CodeGenerator.qr(payload, design = generatorDesign) }
+    }
+    val readability = remember(generatorDesign) { CodeGenerator.readability(generatorDesign) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        item { CodePreview(generated.getOrNull(), generated.exceptionOrNull()?.message) }
         item {
-            CodePreview(generated.getOrNull(), generated.exceptionOrNull()?.message)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = ::undo, enabled = undoStack.isNotEmpty(), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Undo, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("برگشت طراحی")
+                }
+                OutlinedButton(onClick = ::redo, enabled = redoStack.isNotEmpty(), modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Redo, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("دوباره")
+                }
+            }
         }
         item {
             SectionTitle("نوع QR")
@@ -415,7 +589,7 @@ private fun QrMakerScreen(
                 QrKind.entries.forEach { item ->
                     ChoiceChip("${item.emoji} ${item.title}", selected = kind == item) {
                         kind = item
-                        input = if (item == QrKind.URL) "https://" else ""
+                        input = if (item == QrKind.URL || item == QrKind.SOCIAL) "https://" else ""
                     }
                 }
             }
@@ -427,7 +601,8 @@ private fun QrMakerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 minLines = if (kind == QrKind.TEXT) 3 else 1,
                 label = { Text(kind.title) },
-                placeholder = { Text(kind.hint) }
+                placeholder = { Text(kind.hint) },
+                supportingText = { Text("قالب ورودی: ${kind.hint}") }
             )
         }
         item {
@@ -436,31 +611,101 @@ private fun QrMakerScreen(
                 ModuleStyle.entries.forEach { item ->
                     ChoiceChip(
                         label = item.title + if (item.premium) " 👑" else "",
-                        selected = style == item
-                    ) { style = item }
+                        selected = design.moduleStyle == item
+                    ) { commit(design.copy(moduleStyle = item)) }
                 }
             }
         }
         item {
-            SectionTitle("رنگ")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(
-                    AndroidColor.rgb(42, 34, 55),
-                    AndroidColor.rgb(74, 84, 130),
-                    AndroidColor.rgb(116, 71, 111),
-                    AndroidColor.rgb(55, 112, 98)
-                ).forEach { color ->
-                    ColorDot(color, selected = fg == color) { fg = color }
+            SectionTitle("استایل گوشه‌های Finder")
+            ChipRow {
+                FinderStyle.entries.forEach { item ->
+                    ChoiceChip(
+                        label = item.title + if (item.premium) " 👑" else "",
+                        selected = design.finderStyle == item
+                    ) { commit(design.copy(finderStyle = item)) }
                 }
             }
+        }
+        item {
+            SectionTitle("رنگ و گرادیان")
+            SettingsInlineSwitch(
+                title = "گرادیان",
+                subtitle = "ترکیب دو رنگ روی کد",
+                checked = design.gradientEnabled,
+                onCheckedChange = { commit(design.copy(gradientEnabled = it)) }
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("رنگ اصلی", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            ColorPalette(selected = design.foreground) { commit(design.copy(foreground = it)) }
+            if (design.gradientEnabled) {
+                Spacer(Modifier.height(12.dp))
+                Text("رنگ انتهای گرادیان", fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
+                ColorPalette(selected = design.gradientEnd) { commit(design.copy(gradientEnd = it)) }
+            }
+        }
+        item {
+            SectionTitle("پس‌زمینه")
+            SettingsInlineSwitch(
+                title = "پس‌زمینه شفاف 👑",
+                subtitle = "برای PNG مناسب است؛ روی چاپ سفید تست شود",
+                checked = design.transparentBackground,
+                onCheckedChange = { commit(design.copy(transparentBackground = it)) }
+            )
+            if (!design.transparentBackground) {
+                Spacer(Modifier.height(10.dp))
+                BackgroundPalette(selected = design.background) { commit(design.copy(background = it)) }
+            }
+        }
+        item {
+            SectionTitle("لوگو وسط QR 👑")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { logoPicker.launch(arrayOf("image/*")) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (design.logoUri == null) "انتخاب لوگو" else "تعویض لوگو")
+                }
+                if (design.logoUri != null) {
+                    OutlinedButton(onClick = { commit(design.copy(logoUri = null)) }) { Text("حذف") }
+                }
+            }
+        }
+        item {
+            SectionTitle("قاب خروجی")
+            ChipRow {
+                FrameStyle.entries.forEach { item ->
+                    ChoiceChip(
+                        label = item.title + if (item.premium) " 👑" else "",
+                        selected = design.frameStyle == item
+                    ) { commit(design.copy(frameStyle = item)) }
+                }
+            }
+            if (design.frameStyle == FrameStyle.LABEL) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = design.frameText,
+                    onValueChange = { commit(design.copy(frameText = it.take(42))) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("متن زیر QR") }
+                )
+            }
+        }
+        item {
+            ReadabilityCard(readability.score, readability.contrastRatio, readability.message, readability.good)
         }
         item {
             ExportPanel(
-                professionalDesign = style.premium,
+                professionalDesign = design.professional(),
                 isPremium = isPremium,
                 onFreePng = {
                     generated.getOrNull()?.let {
-                        if (style.premium && !isPremium) onNeedPremium()
+                        if (design.professional() && !isPremium) onNeedPremium()
                         else {
                             ExportManager.savePng(context, it.bitmap, "qr_${System.currentTimeMillis()}")
                             preferences.addHistory("QR", input)
@@ -470,10 +715,11 @@ private fun QrMakerScreen(
                 },
                 onPremiumPng = {
                     if (!isPremium) onNeedPremium() else runCatching {
-                        val hd = CodeGenerator.qr(payload, size = 2048, style = style, foreground = fg, background = bg)
+                        val hd = CodeGenerator.qr(payload, size = 2048, design = generatorDesign)
                         ExportManager.savePng(context, hd.bitmap, "qr_hd_${System.currentTimeMillis()}")
                         preferences.addHistory("QR-HD", input)
-                    }.onSuccess { onMessage("PNG با کیفیت HD ذخیره شد ✨") }.onFailure { onMessage(it.message ?: "خطا در خروجی") }
+                    }.onSuccess { onMessage("PNG با کیفیت HD ذخیره شد ✨") }
+                        .onFailure { onMessage(it.message ?: "خطا در خروجی") }
                 },
                 onPdf = {
                     if (!isPremium) onNeedPremium() else generated.getOrNull()?.let {
@@ -486,10 +732,60 @@ private fun QrMakerScreen(
                     if (!isPremium) onNeedPremium() else generated.getOrNull()?.let {
                         ExportManager.saveSvg(context, it.matrix, it.foreground, it.background, "qr_${System.currentTimeMillis()}")
                         preferences.addHistory("QR-SVG", input)
-                        onMessage("SVG ذخیره شد")
+                        onMessage(
+                            if (it.hasLogo || it.frameStyle != FrameStyle.NONE || it.gradientEnd != null)
+                                "SVG استاندارد ذخیره شد؛ لوگو/قاب/گرادیان در PNG و PDF حفظ می‌شوند."
+                            else "SVG ذخیره شد"
+                        )
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun ColorPalette(selected: Int, onSelect: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        listOf(
+            AndroidColor.rgb(42, 34, 55),
+            AndroidColor.rgb(74, 84, 130),
+            AndroidColor.rgb(116, 71, 111),
+            AndroidColor.rgb(55, 112, 98),
+            AndroidColor.rgb(20, 82, 140),
+            AndroidColor.rgb(160, 72, 64),
+            AndroidColor.BLACK
+        ).forEach { color -> ColorDot(color, selected == color) { onSelect(color) } }
+    }
+}
+
+@Composable
+private fun BackgroundPalette(selected: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        listOf(
+            AndroidColor.WHITE,
+            AndroidColor.rgb(255, 248, 251),
+            AndroidColor.rgb(245, 237, 247),
+            AndroidColor.rgb(239, 249, 246)
+        ).forEach { color -> ColorDot(color, selected == color) { onSelect(color) } }
+    }
+}
+
+@Composable
+private fun ReadabilityCard(score: Int, ratio: Double, message: String, good: Boolean) {
+    val container = if (good) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.secondaryContainer
+    Card(colors = CardDefaults.cardColors(containerColor = container), shape = RoundedCornerShape(22.dp)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (good) Icons.Default.Verified else Icons.Default.WarningAmber, contentDescription = null)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("امتیاز خوانایی: $score/100", fontWeight = FontWeight.Black)
+                Text("Contrast: ${String.format(Locale.US, "%.2f", ratio)}:1", style = MaterialTheme.typography.labelSmall)
+                Text(message, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -519,9 +815,7 @@ private fun BarcodeMakerScreen(
     }
     var selected by remember { mutableStateOf(formats.first()) }
     var input by remember { mutableStateOf("123456789012") }
-    val generated = remember(input, selected) {
-        runCatching { CodeGenerator.barcode(input, selected.second) }
-    }
+    val generated = remember(input, selected) { runCatching { CodeGenerator.barcode(input, selected.second) } }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -531,9 +825,7 @@ private fun BarcodeMakerScreen(
         item { CodePreview(generated.getOrNull(), generated.exceptionOrNull()?.message, barcode = true) }
         item {
             SectionTitle("نوع بارکد")
-            ChipRow {
-                formats.forEach { item -> ChoiceChip(item.first, selected == item) { selected = item } }
-            }
+            ChipRow { formats.forEach { item -> ChoiceChip(item.first, selected == item) { selected = item } } }
         }
         item {
             OutlinedTextField(
@@ -560,17 +852,20 @@ private fun BarcodeMakerScreen(
                         val hd = CodeGenerator.barcode(input, selected.second, width = 2400, height = 900)
                         ExportManager.savePng(context, hd.bitmap, "barcode_hd_${System.currentTimeMillis()}")
                         preferences.addHistory("${selected.first}-HD", input)
-                    }.onSuccess { onMessage("PNG با کیفیت چاپ ذخیره شد") }.onFailure { onMessage(it.message ?: "خطا") }
+                    }.onSuccess { onMessage("PNG با کیفیت چاپ ذخیره شد") }
+                        .onFailure { onMessage(it.message ?: "خطا") }
                 },
                 onPdf = {
                     if (!isPremium) onNeedPremium() else generated.getOrNull()?.let {
                         ExportManager.savePdf(context, it.bitmap, "barcode_${System.currentTimeMillis()}")
+                        preferences.addHistory("${selected.first}-PDF", input)
                         onMessage("PDF ذخیره شد")
                     }
                 },
                 onSvg = {
                     if (!isPremium) onNeedPremium() else generated.getOrNull()?.let {
                         ExportManager.saveSvg(context, it.matrix, it.foreground, it.background, "barcode_${System.currentTimeMillis()}")
+                        preferences.addHistory("${selected.first}-SVG", input)
                         onMessage("SVG ذخیره شد")
                     }
                 }
@@ -579,43 +874,262 @@ private fun BarcodeMakerScreen(
     }
 }
 
-// -------------------- اسکنر دوربین --------------------
+// -------------------- Scanner: دوربین + عکس --------------------
 @Composable
-private fun ScannerScreen(preferences: PreferencesRepository) {
-    var lastResult by remember { mutableStateOf<String?>(null) }
-    val launcher = rememberLauncherForActivityResult(ScanContract()) { result ->
-        if (result.contents != null) {
-            lastResult = result.contents
-            preferences.addHistory("SCAN", result.contents)
+private fun ScannerScreen(preferences: PreferencesRepository, onMessage: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var results by remember { mutableStateOf<List<DecodedImageCode>>(emptyList()) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ScanContract()) { result ->
+        if (!result.contents.isNullOrBlank()) {
+            val item = DecodedImageCode(result.contents, result.formatName ?: "CAMERA")
+            results = listOf(item)
+            preferences.addHistory("SCAN-${item.format}", item.text)
         }
-    }
-    val options = remember {
-        ScanOptions()
-            .setPrompt("کد را داخل کادر بگیر ✨")
-            .setBeepEnabled(true)
-            .setOrientationLocked(false)
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Text("🔍", fontSize = 72.sp)
-        Text("اسکنر QR و Barcode", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-        Text("دوربین باز می‌شود و نتیجه بعد از خواندن کد همین‌جا نمایش داده می‌شود.", textAlign = TextAlign.Center)
-        Button(onClick = { launcher.launch(options) }) {
-            Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("شروع اسکن")
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val decoded = withContext(Dispatchers.IO) { ImageCodeDecoder.decodeAll(context, uri) }
+                results = decoded
+                decoded.forEach { preferences.addHistory("SCAN-${it.format}", it.text) }
+                onMessage(
+                    if (decoded.isEmpty()) "کدی داخل این تصویر پیدا نشد."
+                    else "${NumberFormatter.groupInteger(decoded.size.toLong())} کد از تصویر خوانده شد."
+                )
+            }
         }
-        lastResult?.let {
-            Card(shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.fillMaxWidth().padding(18.dp)) {
-                    Text("نتیجه", fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Text(it)
+    }
+
+    fun launchCamera(torch: Boolean) {
+        cameraLauncher.launch(
+            ScanOptions()
+                .setPrompt(if (torch) "فلش روشن است؛ کد را داخل کادر بگیر" else "کد را داخل کادر بگیر ✨")
+                .setBeepEnabled(true)
+                .setTorchEnabled(torch)
+                .setOrientationLocked(false)
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        item { Text("🔍", fontSize = 66.sp) }
+        item { Text("اسکنر QR و Barcode", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black) }
+        item {
+            Text(
+                "با دوربین، فلش یا یک عکس از گالری اسکن کن. از یک تصویر می‌توان چند کد را هم‌زمان پیدا کرد.",
+                textAlign = TextAlign.Center
+            )
+        }
+        item {
+            Button(onClick = { launchCamera(false) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("اسکن با دوربین")
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { launchCamera(true) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.FlashOn, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("با فلش")
                 }
+                OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("از عکس")
+                }
+            }
+        }
+        if (results.isNotEmpty()) {
+            item {
+                Text(
+                    "نتیجه‌ها (${NumberFormatter.groupInteger(results.size.toLong())})",
+                    modifier = Modifier.fillMaxWidth(),
+                    fontWeight = FontWeight.Black
+                )
+            }
+            items(results, key = { "${it.format}:${it.text}" }) { item ->
+                ScanResultCard(context, item)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScanResultCard(context: Context, item: DecodedImageCode) {
+    val safety = remember(item.text) { ScanSafetyAnalyzer.analyze(item.text) }
+    Card(shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text(item.format, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(item.text, fontWeight = FontWeight.Medium)
+            if (safety.isUrl) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (safety.level == LinkRiskLevel.CAUTION)
+                        MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.tertiaryContainer
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (safety.level == LinkRiskLevel.CAUTION) Icons.Default.WarningAmber else Icons.Default.Verified,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(safety.message, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { copyText(context, item.text) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("کپی")
+                }
+                OutlinedButton(onClick = { shareText(context, item.text) }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Share, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("اشتراک")
+                }
+                if (safety.isUrl) {
+                    OutlinedButton(onClick = { openUrl(context, item.text) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("بازکردن")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// -------------------- Batch Tools --------------------
+@Composable
+private fun BatchToolsScreen(
+    isPremium: Boolean,
+    preferences: PreferencesRepository,
+    onNeedPremium: () -> Unit,
+    onMessage: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var values by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            loading = true
+            scope.launch {
+                values = withContext(Dispatchers.IO) { BatchInputReader.read(context, uri) }
+                loading = false
+                onMessage(
+                    if (values.isEmpty()) "داده قابل استفاده‌ای در فایل پیدا نشد."
+                    else "${NumberFormatter.groupInteger(values.size.toLong())} ردیف آماده شد."
+                )
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(18.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(24.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text("ساخت گروهی QR", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
+                    Text("CSV، TXT یا XLSX را انتخاب کن. اولین ستون هر ردیف به QR تبدیل می‌شود؛ حداکثر 100 ردیف.")
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = {
+                    picker.launch(
+                        arrayOf(
+                            "text/csv",
+                            "text/plain",
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "application/octet-stream"
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !loading
+            ) {
+                Icon(Icons.Default.TableRows, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (loading) "در حال خواندن..." else "انتخاب CSV / XLSX")
+            }
+        }
+        if (values.isNotEmpty()) {
+            item {
+                Text(
+                    "پیش‌نمایش ${NumberFormatter.groupInteger(values.size.toLong())} ردیف",
+                    fontWeight = FontWeight.Black
+                )
+            }
+            items(values.take(10)) { value ->
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Text(value, Modifier.fillMaxWidth().padding(12.dp), maxLines = 2)
+                }
+            }
+            if (values.size > 10) item { Text("… و ${values.size - 10} ردیف دیگر", style = MaterialTheme.typography.bodySmall) }
+            item {
+                Button(
+                    onClick = {
+                        if (!isPremium) {
+                            onNeedPremium()
+                        } else {
+                            scope.launch {
+                                val count = withContext(Dispatchers.IO) {
+                                    values.forEachIndexed { index, value ->
+                                        val code = CodeGenerator.qr(value, size = 768)
+                                        ExportManager.savePng(context, code.bitmap, "batch_qr_${index + 1}_${System.currentTimeMillis()}")
+                                        code.bitmap.recycle()
+                                    }
+                                    values.size
+                                }
+                                preferences.addHistory("BATCH-PNG", "$count QR")
+                                onMessage("${NumberFormatter.groupInteger(count.toLong())} فایل PNG ذخیره شد.")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("خروجی PNG گروهی 👑") }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        if (!isPremium) {
+                            onNeedPremium()
+                        } else {
+                            scope.launch {
+                                runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        val bitmaps = values.take(60).map { CodeGenerator.qr(it, size = 360).bitmap }
+                                        try {
+                                            ExportManager.saveA4LabelPdf(context, bitmaps, "qr_labels_${System.currentTimeMillis()}")
+                                        } finally {
+                                            bitmaps.forEach { it.recycle() }
+                                        }
+                                    }
+                                }.onSuccess {
+                                    preferences.addHistory("BATCH-A4", "${values.take(60).size} QR")
+                                    onMessage("PDF لیبل A4 ذخیره شد.")
+                                }.onFailure { onMessage(it.message ?: "ساخت PDF ناموفق بود.") }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("ساخت صفحه لیبل A4 👑") }
             }
         }
     }
@@ -659,32 +1173,113 @@ private fun TemplatesScreen(isPremium: Boolean, onOpenMaker: () -> Unit, onNeedP
 // -------------------- تاریخچه محلی --------------------
 @Composable
 private fun HistoryScreen(preferences: PreferencesRepository) {
-    val history = remember { preferences.history() }
-    if (history.isEmpty()) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("🫧", fontSize = 60.sp)
-                Text("هنوز چیزی اینجا نیست")
+    var revision by remember { mutableStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var favoritesOnly by remember { mutableStateOf(false) }
+    var kindFilter by remember { mutableStateOf("همه") }
+    var showClearDialog by remember { mutableStateOf(false) }
+    val history = remember(revision) { preferences.history() }
+    val filtered = remember(history, query, favoritesOnly, kindFilter) {
+        history.filter { item ->
+            val matchesQuery = query.isBlank() || item.payload.contains(query, true) || item.kind.contains(query, true)
+            val matchesFavorite = !favoritesOnly || item.favorite
+            val matchesKind = when (kindFilter) {
+                "QR" -> item.kind.startsWith("QR") || item.kind.startsWith("BATCH")
+                "Barcode" -> !item.kind.startsWith("QR") && !item.kind.startsWith("SCAN") && !item.kind.startsWith("BATCH")
+                "Scan" -> item.kind.startsWith("SCAN")
+                else -> true
             }
+            matchesQuery && matchesFavorite && matchesKind
         }
-        return
     }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("پاک‌کردن تاریخچه") },
+            text = { Text("تمام رکوردهای تاریخچه و علاقه‌مندی‌ها حذف شوند؟") },
+            confirmButton = {
+                Button(onClick = {
+                    preferences.clearHistory()
+                    revision++
+                    showClearDialog = false
+                }) { Text("حذف همه") }
+            },
+            dismissButton = { TextButton(onClick = { showClearDialog = false }) { Text("لغو") } }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(history.size) { index ->
-            val item = history[index]
-            Card(shape = RoundedCornerShape(20.dp)) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.History, contentDescription = null)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(item.kind, fontWeight = FontWeight.Bold)
-                        Text(item.payload, maxLines = 2, style = MaterialTheme.typography.bodySmall)
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                label = { Text("جستجو در تاریخچه") }
+            )
+        }
+        item {
+            ChipRow {
+                listOf("همه", "QR", "Barcode", "Scan").forEach { filter ->
+                    ChoiceChip(filter, selected = kindFilter == filter) { kindFilter = filter }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { favoritesOnly = !favoritesOnly }, modifier = Modifier.weight(1f)) {
+                    Icon(if (favoritesOnly) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("فقط علاقه‌مندی‌ها")
+                }
+                OutlinedButton(onClick = { showClearDialog = true }, enabled = history.isNotEmpty()) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(Modifier.width(4.dp))
+                    Text("پاک‌کردن")
+                }
+            }
+        }
+        if (filtered.isEmpty()) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 60.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("🫧", fontSize = 60.sp)
+                    Text(if (history.isEmpty()) "هنوز چیزی اینجا نیست" else "نتیجه‌ای با این فیلتر پیدا نشد")
+                }
+            }
+        } else {
+            items(filtered, key = { it.createdAt }) { item ->
+                Card(shape = RoundedCornerShape(20.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.History, contentDescription = null)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.kind, fontWeight = FontWeight.Bold)
+                            Text(item.payload, maxLines = 2, style = MaterialTheme.typography.bodySmall)
+                            Text(formatTime(item.createdAt), style = MaterialTheme.typography.labelSmall)
+                        }
+                        IconButton(onClick = {
+                            preferences.toggleFavorite(item.createdAt)
+                            revision++
+                        }) {
+                            Icon(
+                                if (item.favorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "علاقه‌مندی"
+                            )
+                        }
+                        IconButton(onClick = {
+                            preferences.removeHistory(item.createdAt)
+                            revision++
+                        }) { Icon(Icons.Default.Delete, contentDescription = "حذف") }
                     }
-                    Text(formatTime(item.createdAt), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -694,6 +1289,7 @@ private fun HistoryScreen(preferences: PreferencesRepository) {
 // -------------------- اشتراک حرفه‌ای --------------------
 @Composable
 private fun PremiumScreen(activity: Activity, billingManager: BillingManager, premiumState: PremiumState) {
+    val formattedPrice = remember(premiumState.priceText) { NumberFormatter.groupNumbersInText(premiumState.priceText) }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(22.dp),
@@ -711,7 +1307,7 @@ private fun PremiumScreen(activity: Activity, billingManager: BillingManager, pr
         }
         item {
             Text(
-                "خروجی ساده رایگان می‌ماند. فقط وقتی طرح یا فایل وارد سطح حرفه‌ای شود، اشتراک لازم است.",
+                "ساخت و اسکن پایه رایگان می‌ماند. ابزارهای استودیویی و خروجی‌های چاپی با Pro فعال می‌شوند.",
                 textAlign = TextAlign.Center
             )
         }
@@ -719,9 +1315,9 @@ private fun PremiumScreen(activity: Activity, billingManager: BillingManager, pr
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PremiumFeature("PNG با کیفیت چاپ و HD")
                 PremiumFeature("PDF و SVG برداری")
-                PremiumFeature("استایل‌های نقطه‌ای، گرد و حبابی")
-                PremiumFeature("قالب‌های حرفه‌ای و لیبل محصول")
-                PremiumFeature("خروجی‌های بدون محدودیت در مدت اشتراک")
+                PremiumFeature("گرادیان، Finder، لوگو، قاب و پس‌زمینه شفاف")
+                PremiumFeature("ساخت گروهی از CSV/XLSX و صفحه لیبل A4")
+                PremiumFeature("قالب‌های حرفه‌ای و خروجی نامحدود در مدت اشتراک")
             }
         }
         item {
@@ -735,7 +1331,7 @@ private fun PremiumScreen(activity: Activity, billingManager: BillingManager, pr
                     enabled = premiumState.available,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (premiumState.available) "فعال‌سازی ${premiumState.priceText}" else "در انتظار تنظیم محصول فروشگاه")
+                    Text(if (premiumState.available) "فعال‌سازی $formattedPrice" else "در انتظار تنظیم محصول فروشگاه")
                 }
             }
         }
@@ -745,13 +1341,28 @@ private fun PremiumScreen(activity: Activity, billingManager: BillingManager, pr
 
 // -------------------- تنظیمات --------------------
 @Composable
-private fun SettingsScreen(preferences: PreferencesRepository) {
+private fun SettingsScreen(
+    preferences: PreferencesRepository,
+    onEditProfileName: () -> Unit,
+    onPickProfileImage: () -> Unit
+) {
     var notifications by remember { mutableStateOf(preferences.notificationsEnabled) }
+    val historyCount = remember { preferences.history().size }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item {
+            SettingsRow("نام پروفایل", preferences.profileName, Icons.Default.AccountCircle) {
+                IconButton(onClick = onEditProfileName) { Icon(Icons.Default.Edit, contentDescription = "ویرایش نام") }
+            }
+        }
+        item {
+            SettingsRow("عکس پروفایل", "تصویر بالای منوی همبرگری", Icons.Default.AddPhotoAlternate) {
+                TextButton(onClick = onPickProfileImage) { Text("انتخاب") }
+            }
+        }
         item {
             SettingsRow("اعلان‌ها", "خبر بروزرسانی‌ها و قابلیت‌های جدید", Icons.Default.Notifications) {
                 Switch(
@@ -764,6 +1375,7 @@ private fun SettingsScreen(preferences: PreferencesRepository) {
             }
         }
         item { SettingsRow("حالت نمایش", "هماهنگ با روشن/تیره بودن گوشی", Icons.Default.DarkMode) { Text("خودکار") } }
+        item { SettingsRow("تاریخچه محلی", "${NumberFormatter.groupInteger(historyCount.toLong())} رکورد", Icons.Default.History) { Text("آفلاین") } }
         item { SettingsRow("نسخه برنامه", "Version ${BuildConfig.VERSION_NAME}", Icons.Default.Verified) { Text("${BuildConfig.VERSION_CODE}") } }
     }
 }
@@ -775,24 +1387,39 @@ private fun AboutUsScreen() = CenterInfo {
     Text("تمامی حقوق مربوط به این برنامه انحصاری میباشد", textAlign = TextAlign.Center)
 }
 
+// تماس با ما: اطلاعات اصلی بالا و امضای AS Team در بخش پایین صفحه پس از Divider قرار می‌گیرد.
 @Composable
-private fun ContactScreen() = CenterInfo {
-    Text("گروه توسعه و برنامه نویسی AS Team", fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
-    Spacer(Modifier.height(14.dp))
-    Text("ایمیل پشتیبانی", fontWeight = FontWeight.Bold)
-    Text("as.team.support@gmail.com")
+private fun ContactScreen() {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(26.dp))
+        Icon(Icons.Default.ContactSupport, contentDescription = null, modifier = Modifier.size(54.dp))
+        Spacer(Modifier.height(14.dp))
+        Text("ارتباط با پشتیبانی", fontWeight = FontWeight.Black, fontSize = 22.sp)
+        Spacer(Modifier.height(18.dp))
+        Text("ایمیل پشتیبانی", fontWeight = FontWeight.Bold)
+        Text("as.team.support@gmail.com")
+        Spacer(Modifier.weight(1f))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+        Text("گروه توسعه فناوری و نرم افزاری as Team", fontWeight = FontWeight.Black, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Text("as.team.support@gmail.com", textAlign = TextAlign.Center)
+        Spacer(Modifier.height(44.dp))
+    }
 }
 
-// صفحه «درباره نرم افزار» عمداً فقط توضیح کاربرپسند و نسخه را نشان می‌دهد؛
-// هیچ نام پکیج، شناسه فنی، شناسه محصول پرداخت یا اطلاعات توسعه‌ای در این صفحه نمایش داده نمی‌شود.
+// صفحه درباره نرم‌افزار فقط توضیح کاربرپسند و نسخه را نمایش می‌دهد؛ شناسه‌های فنی نمایش داده نمی‌شوند.
 @Composable
 private fun AboutAppScreen() = CenterInfo {
     Text("QR ساز و Barcode ساز", fontWeight = FontWeight.Black, fontSize = 22.sp)
     Spacer(Modifier.height(12.dp))
     Text(
-        "ابزاری ساده برای ساخت و اسکن QR Code و انواع Barcode.\n" +
-            "می‌توانید کدها را شخصی‌سازی کنید، پیش‌نمایش ببینید و در قالب‌های مختلف خروجی بگیرید.\n" +
-            "بخش‌های پایه رایگان هستند و ابزارهای حرفه‌ای با اشتراک Pro فعال می‌شوند.",
+        "ابزار فارسی برای ساخت و اسکن QR Code و انواع Barcode.\n" +
+            "در استودیوی QR می‌توانید رنگ، گرادیان، لوگو، قاب و گوشه‌های کد را شخصی‌سازی کنید.\n" +
+            "اسکن از دوربین و تصویر، تاریخچه قابل جستجو و ساخت گروهی فایل‌های QR نیز در دسترس است.",
         textAlign = TextAlign.Center
     )
     Spacer(Modifier.height(16.dp))
@@ -809,12 +1436,66 @@ private fun CenterInfo(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
+// -------------------- Drawer --------------------
 @Composable
-private fun DrawerHeader(premium: Boolean) {
-    Column(Modifier.fillMaxWidth().padding(20.dp)) {
-        Text("🧸 QR ساز", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Black)
-        Text(if (premium) "حالت حرفه‌ای فعاله 👑" else "کدهای کوچولو، خروجی‌های جدی ✨", style = MaterialTheme.typography.bodySmall)
+private fun DrawerProfileHeader(
+    premium: Boolean,
+    profileName: String,
+    profileBitmap: Bitmap?,
+    onPickImage: () -> Unit,
+    onEditName: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(92.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                .clickable(onClick = onPickImage),
+            contentAlignment = Alignment.Center
+        ) {
+            if (profileBitmap != null) {
+                Image(
+                    bitmap = profileBitmap.asImageBitmap(),
+                    contentDescription = "عکس پروفایل",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(66.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(profileName, fontWeight = FontWeight.Black)
+            IconButton(onClick = onEditName, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = "ویرایش نام", modifier = Modifier.size(18.dp))
+            }
+        }
+        Text(
+            if (premium) "حالت حرفه‌ای فعال 👑" else "QR یار • کدهای کوچک، خروجی‌های جدی ✨",
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center
+        )
+        Text("برای تغییر عکس، روی تصویر بزنید", style = MaterialTheme.typography.labelSmall)
     }
+}
+
+@Composable
+private fun DrawerSectionLabel(text: String) {
+    Text(
+        text,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 5.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Bold
+    )
 }
 
 @Composable
@@ -828,6 +1509,7 @@ private fun DrawerItem(label: String, icon: ImageVector, selected: Boolean, onCl
     )
 }
 
+// -------------------- اجزای مشترک UI --------------------
 @Composable
 private fun CodePreview(code: GeneratedCode?, error: String?, barcode: Boolean = false) {
     Card(
@@ -843,7 +1525,8 @@ private fun CodePreview(code: GeneratedCode?, error: String?, barcode: Boolean =
                 code != null -> Image(
                     bitmap = code.bitmap.asImageBitmap(),
                     contentDescription = "پیش نمایش کد",
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
                 )
                 error != null -> Text(error, textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.error)
                 else -> Text("محتوا را وارد کن")
@@ -871,7 +1554,9 @@ private fun ExportPanel(
                 if (professionalDesign && !isPremium) Text("PRO 👑", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Bold)
             }
             Text(
-                if (professionalDesign && !isPremium) "این طرح حرفه‌ای است؛ خروجی آن با اشتراک هفتگی باز می‌شود." else "PNG استاندارد رایگان است؛ فرمت‌های چاپی و HD حرفه‌ای هستند.",
+                if (professionalDesign && !isPremium)
+                    "این طراحی حرفه‌ای است؛ برای خروجی نهایی اشتراک Pro لازم است."
+                else "PNG استاندارد رایگان است؛ فرمت‌های چاپی و HD حرفه‌ای هستند.",
                 style = MaterialTheme.typography.bodySmall
             )
             Button(onClick = onFreePng, modifier = Modifier.fillMaxWidth()) {
@@ -903,7 +1588,11 @@ private fun ChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
         shape = RoundedCornerShape(18.dp),
         border = if (selected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
     ) {
-        Text(label, Modifier.padding(horizontal = 14.dp, vertical = 10.dp), fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        Text(
+            label,
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 
@@ -955,14 +1644,29 @@ private fun SettingsRow(
     }
 }
 
+@Composable
+private fun SettingsInlineSwitch(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
 // -------------------- توابع کمکی --------------------
-// داده خام فرم را به payload استاندارد قابل فهم برای اسکنرها تبدیل می‌کند.
 private fun buildQrPayload(kind: QrKind, input: String): String {
     if (input.isBlank()) return ""
     return when (kind) {
-        QrKind.URL, QrKind.TEXT -> input
-        QrKind.EMAIL -> "mailto:$input"
-        QrKind.PHONE -> "tel:$input"
+        QrKind.URL, QrKind.TEXT, QrKind.SOCIAL -> input.trim()
+        QrKind.EMAIL -> "mailto:${input.trim()}"
+        QrKind.PHONE -> "tel:${input.trim()}"
         QrKind.WIFI -> {
             val parts = input.split("|", limit = 2)
             val ssid = parts.getOrElse(0) { "" }
@@ -975,27 +1679,90 @@ private fun buildQrPayload(kind: QrKind, input: String): String {
             val body = parts.getOrElse(1) { "" }
             "SMSTO:$phone:$body"
         }
+        QrKind.VCARD -> {
+            val parts = input.split("|", limit = 5)
+            val name = escapeVcard(parts.getOrElse(0) { "" })
+            val phone = escapeVcard(parts.getOrElse(1) { "" })
+            val email = escapeVcard(parts.getOrElse(2) { "" })
+            val org = escapeVcard(parts.getOrElse(3) { "" })
+            val url = escapeVcard(parts.getOrElse(4) { "" })
+            buildString {
+                append("BEGIN:VCARD\nVERSION:3.0\nFN:$name\n")
+                if (phone.isNotBlank()) append("TEL:$phone\n")
+                if (email.isNotBlank()) append("EMAIL:$email\n")
+                if (org.isNotBlank()) append("ORG:$org\n")
+                if (url.isNotBlank()) append("URL:$url\n")
+                append("END:VCARD")
+            }
+        }
+        QrKind.EVENT -> {
+            val parts = input.split("|", limit = 4)
+            val title = parts.getOrElse(0) { "" }
+            val start = parts.getOrElse(1) { "" }
+            val end = parts.getOrElse(2) { "" }
+            val location = parts.getOrElse(3) { "" }
+            "BEGIN:VEVENT\nSUMMARY:$title\nDTSTART:$start\nDTEND:$end\nLOCATION:$location\nEND:VEVENT"
+        }
+        QrKind.GEO -> "geo:${input.trim()}"
     }
 }
 
-private fun escapeWifi(value: String): String = value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace(":", "\\:")
+private fun escapeWifi(value: String): String = value
+    .replace("\\", "\\\\")
+    .replace(";", "\\;")
+    .replace(",", "\\,")
+    .replace(":", "\\:")
 
-// متن اشتراک برنامه؛ لینک همیشه باید به ریپوی اصلی App-QrCodeYar اشاره کند.
+private fun escapeVcard(value: String): String = value
+    .replace("\\", "\\\\")
+    .replace(";", "\\;")
+    .replace(",", "\\,")
+    .replace("\n", "\\n")
+
 private fun shareApp(activity: Activity) {
-    val text = "QR ساز و Barcode ساز AS Team\nhttps://github.com/waxew/App-QrCodeYar"
-    activity.startActivity(
+    shareText(activity, "QR ساز و Barcode ساز AS Team\nhttps://github.com/waxew/App-QrCodeYar", "معرفی به دوستان")
+}
+
+private fun shareText(context: Context, text: String, chooserTitle: String = "اشتراک‌گذاری") {
+    context.startActivity(
         Intent.createChooser(
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
             },
-            "معرفی به دوستان"
+            chooserTitle
         )
     )
+}
+
+private fun copyText(context: Context, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("QR result", text))
+}
+
+private fun openUrl(context: Context, text: String) {
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(text)))
+    }
+}
+
+// تصویر انتخاب‌شده را با حداکثر ضلع مشخص بارگذاری می‌کند تا حافظه UI کنترل شود.
+private fun loadLocalBitmap(context: Context, uriString: String?, maxSide: Int): Bitmap? {
+    if (uriString.isNullOrBlank()) return null
+    val original = runCatching {
+        context.contentResolver.openInputStream(Uri.parse(uriString))?.use { BitmapFactory.decodeStream(it) }
+    }.getOrNull() ?: return null
+    val largest = maxOf(original.width, original.height)
+    if (largest <= maxSide) return original
+    val ratio = maxSide.toFloat() / largest.toFloat()
+    val width = (original.width * ratio).toInt().coerceAtLeast(1)
+    val height = (original.height * ratio).toInt().coerceAtLeast(1)
+    val scaled = Bitmap.createScaledBitmap(original, width, height, true)
+    if (scaled !== original) original.recycle()
+    return scaled
 }
 
 private fun formatTime(time: Long): String = SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(Date(time))
 
 @Composable
-private fun <T> kotlinx.coroutines.flow.StateFlow<T>.collectAsStateCompat(): androidx.compose.runtime.State<T> =
-    collectAsState()
+private fun <T> kotlinx.coroutines.flow.StateFlow<T>.collectAsStateCompat(): androidx.compose.runtime.State<T> = collectAsState()
