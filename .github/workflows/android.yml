@@ -1,9 +1,11 @@
-# CI اصلی پروژه: هر Push روی main ابتدا Debug و Release را کامپایل می‌کند.
+# CI اصلی پروژه: هر Push روی main یا شاخه نسخه 1.1 ابتدا Debug و Release را کامپایل می‌کند.
 # Release در Runner به‌صورت unsigned + zipaligned آماده می‌شود؛ کلید خصوصی Production هرگز وارد GitHub عمومی نمی‌شود.
 name: Android CI
 
 on:
   push:
+    branches: [ main, feature/v1.1.0-qr-studio ]
+  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
@@ -44,9 +46,9 @@ jobs:
           mkdir -p /tmp/release-bundle/tools/lib
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -f -p 4 \
             app/build/outputs/apk/release/app-release-unsigned.apk \
-            /tmp/release-bundle/App-QrCodeYar-v1.0.1-aligned-unsigned.apk
+            /tmp/release-bundle/App-QrCodeYar-v1.1.0-aligned-unsigned.apk
           "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 \
-            /tmp/release-bundle/App-QrCodeYar-v1.0.1-aligned-unsigned.apk
+            /tmp/release-bundle/App-QrCodeYar-v1.1.0-aligned-unsigned.apk
           cp "$ANDROID_HOME/build-tools/35.0.0/apksigner" /tmp/release-bundle/tools/
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" /tmp/release-bundle/tools/lib/
           chmod +x /tmp/release-bundle/tools/apksigner
@@ -54,25 +56,25 @@ jobs:
       # git archive دقیقاً سورس همان Commit را بدون پوشه .git در یک ZIP قابل بازکردن روی لپ‌تاپ می‌سازد.
       - name: Prepare source archive
         run: |
-          git archive --format=zip --output=/tmp/App-QrCodeYar-v1.0.1-source-public.zip HEAD
+          git archive --format=zip --output=/tmp/App-QrCodeYar-v1.1.0-source-public.zip HEAD
 
       - name: Upload release bundle
         uses: actions/upload-artifact@v4
         with:
-          name: App-QrCodeYar-v1.0.1-release-bundle
+          name: App-QrCodeYar-v1.1.0-release-bundle
           path: /tmp/release-bundle
           if-no-files-found: error
 
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
-          name: App-QrCodeYar-v1.0.1-source-public
-          path: /tmp/App-QrCodeYar-v1.0.1-source-public.zip
+          name: App-QrCodeYar-v1.1.0-source-public
+          path: /tmp/App-QrCodeYar-v1.1.0-source-public.zip
           if-no-files-found: error
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: App-QrCodeYar-v1.0.1-debug-test
+          name: App-QrCodeYar-v1.1.0-debug-test
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
