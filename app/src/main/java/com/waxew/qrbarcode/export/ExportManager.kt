@@ -17,9 +17,26 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import com.google.zxing.common.BitMatrix
+import com.waxew.qrbarcode.generator.CodeGenerator
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+
+data class LabelPdfSpec(
+    val pageWidth: Int,
+    val pageHeight: Int,
+    val columns: Int,
+    val rows: Int,
+    val margin: Float = 48f,
+    val gap: Float = 18f
+) {
+    companion object {
+        fun a4(columns: Int = 3, rows: Int = 5) = LabelPdfSpec(1240, 1754, columns, rows)
+        fun a5(columns: Int = 2, rows: Int = 4) = LabelPdfSpec(874, 1240, columns, rows)
+    }
+}
 
 object ExportManager {
     // خروجی PNG استاندارد با فشرده‌سازی بدون اتلاف.
@@ -80,36 +97,34 @@ object ExportManager {
         return uri
     }
 
-    // خروجی چند QR روی A4؛ هر صفحه 3 ستون × 5 ردیف دارد و برای چاپ لیبل مناسب است.
-    fun saveA4LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? {
+    // خروجی چند QR با Layout قابل تنظیم برای A4/A5 و لیبل سفارشی.
+    fun saveLabelPdf(
+        context: Context,
+        bitmaps: List<Bitmap>,
+        displayName: String,
+        spec: LabelPdfSpec
+    ): Uri? {
         require(bitmaps.isNotEmpty()) { "حداقل یک QR برای ساخت صفحه لیبل لازم است." }
+        require(spec.columns in 1..6 && spec.rows in 1..10) { "چیدمان لیبل نامعتبر است." }
         val document = PdfDocument()
-        val pageWidth = 1240
-        val pageHeight = 1754
-        val columns = 3
-        val rows = 5
-        val perPage = columns * rows
-        val margin = 48f
-        val gap = 18f
-        val cellWidth = (pageWidth - margin * 2 - gap * (columns - 1)) / columns
-        val cellHeight = (pageHeight - margin * 2 - gap * (rows - 1)) / rows
+        val perPage = spec.columns * spec.rows
+        val cellWidth = (spec.pageWidth - spec.margin * 2 - spec.gap * (spec.columns - 1)) / spec.columns
+        val cellHeight = (spec.pageHeight - spec.margin * 2 - spec.gap * (spec.rows - 1)) / spec.rows
         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 1.5f
             color = android.graphics.Color.LTGRAY
         }
-
         bitmaps.chunked(perPage).forEachIndexed { pageIndex, pageItems ->
-            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+            val pageInfo = PdfDocument.PageInfo.Builder(spec.pageWidth, spec.pageHeight, pageIndex + 1).create()
             val page = document.startPage(pageInfo)
             pageItems.forEachIndexed { index, bitmap ->
-                val row = index / columns
-                val column = index % columns
-                val left = margin + column * (cellWidth + gap)
-                val top = margin + row * (cellHeight + gap)
+                val row = index / spec.columns
+                val column = index % spec.columns
+                val left = spec.margin + column * (cellWidth + spec.gap)
+                val top = spec.margin + row * (cellHeight + spec.gap)
                 val cell = RectF(left, top, left + cellWidth, top + cellHeight)
                 page.canvas.drawRoundRect(cell, 12f, 12f, borderPaint)
-
                 val innerPadding = 18f
                 val availableW = cellWidth - innerPadding * 2
                 val availableH = cellHeight - innerPadding * 2
@@ -126,18 +141,40 @@ object ExportManager {
             }
             document.finishPage(page)
         }
-
         val uri = writeMedia(
-            context,
-            "$displayName.pdf",
-            "application/pdf",
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            "Download/QRStudio"
-        ) { out ->
-            document.writeTo(out)
-        }
+            context, "$displayName.pdf", "application/pdf",
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio"
+        ) { out -> document.writeTo(out) }
         document.close()
         return uri
+    }
+
+    fun saveA4LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? =
+        saveLabelPdf(context, bitmaps, displayName, LabelPdfSpec.a4())
+
+    fun saveA5LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? =
+        saveLabelPdf(context, bitmaps, displayName, LabelPdfSpec.a5())
+
+    // ZIP گروهی مستقیماً Stream می‌شود تا صدها PNG هم‌زمان در RAM نگه‌داری نشوند.
+    fun saveQrZip(context: Context, payloads: List<String>, displayName: String): Uri? {
+        require(payloads.isNotEmpty()) { "داده‌ای برای ZIP وجود ندارد." }
+        return writeMedia(
+            context, "$displayName.zip", "application/zip",
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio"
+        ) { out ->
+            ZipOutputStream(out).use { zip ->
+                payloads.take(300).forEachIndexed { index, payload ->
+                    val generated = CodeGenerator.qr(payload, size = 640)
+                    try {
+                        zip.putNextEntry(ZipEntry("qr_${index + 1}.png"))
+                        generated.bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip)
+                        zip.closeEntry()
+                    } finally {
+                        generated.bitmap.recycle()
+                    }
+                }
+            }
+        }
     }
 
     // نقطه مشترک تمام عملیات ذخیره‌سازی؛ در خطا رکورد ناقص MediaStore پاک می‌شود.

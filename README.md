@@ -1,79 +1,112 @@
 # App-QrCodeYar
 
-اپلیکیشن اندرویدی فارسی برای ساخت، شخصی‌سازی، اسکن، آرشیو و خروجی گرفتن از QR Code و Barcode با رابط RTL و طراحی Material 3.
+اپلیکیشن فارسی Android برای ساخت، طراحی، اسکن، مدیریت، چاپ و همگام‌سازی QR Code و Barcode با رابط RTL و Material 3.
 
 ## نسخه فعلی
 
-- Version: **1.9.2**
-- Version code: **11**
+- Version: **2.0.0**
+- Version Code: **12**
 - Application ID: `com.waxew.qrbarcode`
-- Minimum Android: API 23
-- Target Android: API 35
-- Kotlin + Jetpack Compose
+- Min SDK: 23
+- Target / Compile SDK: 35
+- Kotlin + Jetpack Compose + Room + CameraX + ML Kit + ZXing
 
-## امکانات اصلی نسخه 1.9.2
+## قابلیت‌های نهایی
 
-- QR Studio با استایل کلاسیک، گرد، نقطه‌ای و حبابی، Finder مستقل، گرادیان، لوگو، قاب، پس‌زمینه شفاف و Undo/Redo
-- امتیاز Readability/Contrast برای کاهش QRهای سخت‌اسکن
-- QR برای URL، متن، Wi-Fi، ایمیل، تلفن، SMS، vCard، Event، Geo و Social
-- Smart Template Payload Builder واقعی برای Wi-Fi، کارت ویزیت، رستوران، شبکه اجتماعی، محصول و موقعیت
-- Barcodeهای Code 128، Code 39، EAN-13، EAN-8، UPC-A، ITF، Codabar، Data Matrix، PDF417 و Aztec
-- Barcode/Product Label Studio با نام محصول، قیمت، کد کالا و ابعاد خروجی قابل کنترل
-- Scanner زنده CameraX + ML Kit با Torch، تشخیص چندکدی و اسکن از Gallery
-- تنظیمات واقعی Scanner برای Beep، Vibrate، Continuous Scan و Prevent Duplicates
-- تحلیل امنیتی آفلاین URL شامل HTTP، IP مستقیم، localhost، Punycode، @، لینک کوتاه و Schemeهای پرخطر
-- تاریخچه محلی Room با Search، Filter، Favorite و Delete
-- Folder و Tag واقعی برای هر رکورد تاریخچه با Migration امن دیتابیس از schema 1 به 2
-- Archive Manager برای جستجو، فیلتر پوشه و ویرایش Folder/Tag
-- ساخت گروهی QR از CSV/TXT/XLSX، خروجی PNG گروهی و PDF لیبل A4
-- Backup schema 2 شامل تاریخچه، Favorite، Folder، Tag و تنظیمات
-- Restore امن تنظیمات و History/Folder/Tag از فایل JSON؛ PIN از بکاپ خودکار Restore نمی‌شود
-- امکان بازکردن فایل بکاپ JSON از File Manager با خود QR یار
-- Accent واقعی Material 3 با پالت صورتی یاسی، سبز نعنایی و آبی آسمانی
-- Start Page عملی با انتخاب خانه، اسکنر یا مرکز 1.9
-- Compact Mode واقعی با کاهش کنترل‌شده Density رابط Compose
-- قفل برنامه با PIN چهار تا هشت رقمی؛ فقط SHA-256 PIN ذخیره می‌شود
-- Drawer راست‌چین، پروفایل، تنظیم اعلان‌ها، Dark Mode خودکار و Back stack داخلی
-- خروجی PNG، PNG HD، PDF و SVG
-- بررسی نسخه جدید از `distribution/latest.json`
-- مدل Freemium و اشتراک هفتگی Pro
-- قالب‌بندی سه‌رقمی قیمت‌ها؛ `12000000` → `12,000,000`
+### QR Designer
+- QR برای URL، Text، Wi-Fi، Email، Phone، SMS، vCard، Event، Geo و Social
+- Module: Classic / Rounded / Dots / Bubble
+- Finder مستقل + رنگ Finder مستقل
+- Gradient با جهت افقی، عمودی و مورب
+- Module Scale برای ضخامت ظاهری
+- Background color، Transparent background و Background image
+- Logo وسط QR با Square / Rounded / Circle و Border color
+- Frame و Label frame
+- Undo/Redo، Readability/Contrast checker
+- Presetهای ذخیره‌شونده طراحی
+- PNG، PNG HD، PDF و SVG
 
-## حفظ داده هنگام بروزرسانی
+### Barcode / Label Studio
+- Code 128، Code 39، EAN-13، EAN-8، UPC-A، ITF، Codabar، Data Matrix، PDF417 و Aztec
+- Product Label با نام، قیمت سه‌رقمی، کد کالا، انتخاب فرمت، ابعاد سفارشی و کنترل نمایش متن
+- خروجی PNG/PDF و خروجی استاندارد Barcode در PNG HD/PDF/SVG
 
-Room Migration صریح، `applicationId` ثابت و Repository سازگار با نسخه‌های قبل باعث می‌شوند History، Favorite، Folder/Tag، تنظیمات و پروفایل هنگام نصب نسخه جدید حفظ شوند. Release Production باید همیشه با همان Release Key امضا شود.
+### Scanner
+- CameraX + ML Kit
+- Torch، Zoom، Beep، Vibrate، Continuous Scan، Prevent Duplicates
+- اسکن چندکدی از Gallery
+- تشخیص نوع محتوا، Copy/Share/Open
+- Link Safety آفلاین و اجرای واقعی Confirm Before Opening Links
+- مدیریت lifecycle منابع Camera/ML Kit/Executor
 
-## فایل‌های مهم
+### Archive / Backup
+- Room History تا 500 رکورد
+- Search، Filter، Favorite، Delete، Folder و Tag
+- Migration امن Room schema 1 -> 2
+- Backup JSON schema 3 به Downloads/QRStudio
+- Restore از File Manager
+- Backup شامل History/Folder/Tag، Settings و Design Presets است؛ PIN/Token ابری Backup نمی‌شود
 
-- `app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt` — رابط اصلی برنامه
-- `app/src/main/java/com/waxew/qrbarcode/ui/V19Root.kt` — مرکز قابلیت‌های 1.9، Archive Manager و Start Page
-- `app/src/main/java/com/waxew/qrbarcode/v19/V19SettingsRepository.kt` — تنظیمات + Backup/Restore تنظیمات
-- `app/src/main/java/com/waxew/qrbarcode/v19/V19Toolbox.kt` — Smart Templates، امنیت URL، لیبل و Backup parser
-- `app/src/main/java/com/waxew/qrbarcode/backup/BackupRestoreActivity.kt` — Restore فایل JSON از File Manager
-- `app/src/main/java/com/waxew/qrbarcode/v19/V19AppLock.kt` — قفل PIN محلی
-- `generator/CodeGenerator.kt` — موتور QR/Barcode
-- `scanner/V19ScannerActivity.kt` — Scanner متصل به تنظیمات 1.9
-- `scanner/ModernScannerActivity.kt` — Scanner نسل قبلی برای سازگاری سورس
-- `data/HistoryDatabase.kt` — Room History + Folder/Tag + Migration
-- `data/PreferencesRepository.kt` — Repository تاریخچه، Archive و Restore Room
-- `batch/BatchInputReader.kt` — CSV/TXT/XLSX
-- `export/ExportManager.kt` — PNG/PDF/SVG و A4 Label PDF
-- `billing/BillingManager.kt` — اشتراک Pro
-- `update/UpdateChecker.kt` — Update checker
+### Batch / Print
+- CSV/TXT/XLSX تا 500 ردیف
+- انتخاب و Mapping ستون Payload
+- PNG گروهی
+- ZIP گروهی Stream-based
+- PDF لیبل A4 و A5 با تعداد ستون/ردیف قابل تنظیم
+
+### Security / Personalization
+- PIN محلی با SHA-256
+- Biometric / Device Credential بدون ذخیره داده بیومتریک
+- Accentهای Material 3، Compact Mode، Start Page
+- Drawer RTL، Profile، Back stack صحیح
+
+## Cloud / Dynamic QR 2.0
+
+سورس Android و قرارداد Backend برای این قابلیت‌ها آماده است:
+
+- Supabase Email Auth
+- Dynamic QR با Slug ثابت و مقصد قابل تغییر
+- Cloud Sync دوطرفه History برای چند دستگاه
+- Analytics اسکن با زمان و Country/City در صورت وجود Header زیرساخت
+- RLS مالک‌محور برای تمام داده‌های کاربر
+- Edge Function `resolve-qr` برای Redirect عمومی QR چاپ‌شده
+
+Backend در `backend/supabase/` قرار دارد. برای فعال‌شدن Cloud باید یک Supabase Project اختصاصی برای QR یار ایجاد و سپس Build با متغیرهای زیر انجام شود:
+
+```text
+SUPABASE_URL
+SUPABASE_PUBLISHABLE_KEY
+DYNAMIC_QR_BASE_URL
+```
+
+`service_role` یا Secret Key هرگز نباید داخل APK قرار بگیرد. در حالت بدون Backend، تمام قابلیت‌های آفلاین برنامه مستقل و فعال باقی می‌مانند.
 
 ## Build
 
-CI پروژه با Gradle 8.9، JDK 17 و Android SDK 35 هر دو خروجی Debug و Release را کامپایل می‌کند.
+CI با JDK 17، Gradle 8.9 و Android SDK 35 هر دو `assembleDebug` و `assembleRelease` را می‌سازد.
 
 ```bash
 ./gradlew assembleDebug
 ./gradlew assembleRelease
 ```
 
+## امضا و بروزرسانی
+
+`applicationId` ثابت است. برای اینکه APK Production روی نسخه قبلی Update شود، تمام Releaseهای Production باید با همان Release Key اصلی امضا شوند. کلید خصوصی Release در Repository عمومی Commit نمی‌شود.
+
+## فایل‌های مهم
+
+- `ui/QrBarcodeApp.kt` — UI اصلی، QR/Barcode/Scanner/Batch
+- `ui/V19Root.kt` — Hub نسخه 2.0، Archive، Settings و Lock
+- `ui/V20Panels.kt` — Smart Template، Label Studio و Cloud UI
+- `generator/CodeGenerator.kt` — موتور Render QR/Barcode
+- `scanner/V19ScannerActivity.kt` — Scanner 2.0
+- `data/HistoryDatabase.kt` — Room + Migration
+- `v20/V20Cloud.kt` — Auth/Dynamic QR/Sync/Analytics client
+- `v20/V20Biometric.kt` — Biometric gate
+- `v20/V20DesignPresetStore.kt` — Presetهای طراحی
+- `backend/supabase/` — Schema/RLS/Edge Function
+
 ## حریم خصوصی
 
-History، Folder/Tag، پروفایل، تنظیمات و PIN hash به‌صورت محلی روی دستگاه نگه‌داری می‌شوند. Link Security نیز آفلاین است.
-
-## قابلیت‌های نیازمند Backend
-
-Dynamic QR واقعی، Cloud Sync، Analytics ابری و اعتبارسنجی سروری خرید ذاتاً به Backend نیاز دارند و جزو بسته آفلاین 1.9.2 محسوب نمی‌شوند.
+در حالت آفلاین هیچ History، Profile یا QR به سرور ارسال نمی‌شود. Cloud فقط پس از تنظیم Backend و ورود کاربر فعال می‌شود.

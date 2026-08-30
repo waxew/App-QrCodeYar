@@ -17,6 +17,7 @@ import com.google.zxing.BarcodeFormat
 import com.waxew.qrbarcode.data.HistoryItem
 import com.waxew.qrbarcode.generator.CodeGenerator
 import com.waxew.qrbarcode.util.NumberFormatter
+import com.waxew.qrbarcode.v20.V20DesignPresetStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -137,11 +138,12 @@ object ProductLabelRenderer {
     }
 }
 
-data class V19BackupPayload(val settingsSnapshot: String, val history: List<HistoryItem>)
+data class V19BackupPayload(val settingsSnapshot: String, val history: List<HistoryItem>, val designPresetsJson: String = "[]")
 
 object V19BackupManager {
-    fun buildJson(history: List<HistoryItem>, settings: V19SettingsRepository): String {
-        val root = JSONObject().put("schema", 2).put("settings", settings.exportSnapshot())
+    fun buildJson(context: Context, history: List<HistoryItem>, settings: V19SettingsRepository): String {
+        val root = JSONObject().put("schema", 3).put("settings", settings.exportSnapshot())
+        root.put("designPresets", JSONArray(V20DesignPresetStore(context).exportJson()))
         val array = JSONArray()
         history.take(500).forEach { item ->
             array.put(JSONObject()
@@ -160,7 +162,7 @@ object V19BackupManager {
         require(json.toByteArray(Charsets.UTF_8).size <= 2_000_000) { "فایل بکاپ بیش از حد بزرگ است." }
         val root = JSONObject(json)
         val schema = root.optInt("schema", 1)
-        require(schema in 1..2) { "نسخه بکاپ پشتیبانی نمی‌شود." }
+        require(schema in 1..3) { "نسخه بکاپ پشتیبانی نمی‌شود." }
         val array = root.optJSONArray("history") ?: JSONArray()
         val history = buildList {
             for (i in 0 until minOf(array.length(), 500)) {
@@ -177,7 +179,7 @@ object V19BackupManager {
                 ))
             }
         }
-        return V19BackupPayload(root.optString("settings"), history)
+        return V19BackupPayload(root.optString("settings"), history, root.optJSONArray("designPresets")?.toString() ?: "[]")
     }
 
     /**

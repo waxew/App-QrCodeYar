@@ -65,8 +65,8 @@ interface HistoryDao {
     @Query("DELETE FROM history_items")
     suspend fun clear()
 
-    @Query("DELETE FROM history_items WHERE createdAt NOT IN (SELECT createdAt FROM history_items ORDER BY createdAt DESC LIMIT 100)")
-    suspend fun trimToLatest100()
+    @Query("DELETE FROM history_items WHERE createdAt NOT IN (SELECT createdAt FROM history_items ORDER BY createdAt DESC LIMIT 500)")
+    suspend fun trimToLatest500()
 }
 
 @Database(entities = [HistoryEntity::class], version = 2, exportSchema = false)

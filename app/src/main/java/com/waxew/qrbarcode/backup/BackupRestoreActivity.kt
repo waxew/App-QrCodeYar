@@ -30,6 +30,7 @@ import com.waxew.qrbarcode.data.PreferencesRepository
 import com.waxew.qrbarcode.ui.theme.QrStudioTheme
 import com.waxew.qrbarcode.v19.V19BackupManager
 import com.waxew.qrbarcode.v19.V19SettingsRepository
+import com.waxew.qrbarcode.v20.V20DesignPresetStore
 
 class BackupRestoreActivity : ComponentActivity() {
     private lateinit var preferences: PreferencesRepository
@@ -65,6 +66,7 @@ class BackupRestoreActivity : ComponentActivity() {
                                     val payload = V19BackupManager.parseJson(json)
                                     val settings = V19SettingsRepository(this@BackupRestoreActivity)
                                     settings.importSnapshot(payload.settingsSnapshot)
+                                    V20DesignPresetStore(this@BackupRestoreActivity).importJson(payload.designPresetsJson)
                                     preferences.restoreHistory(payload.history)
                                     "بکاپ پذیرفته شد و بازیابی در حال ثبت نهایی است. پس از بستن، برنامه را دوباره باز کنید."
                                 }

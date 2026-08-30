@@ -1,0 +1,4 @@
+# The resolver is intentionally public because users scan printed QR codes without an app session.
+# Authorization for editing/analytics stays behind authenticated Data API + RLS policies.
+[functions.resolve-qr]
+verify_jwt = false

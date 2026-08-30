@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.0.0 (versionCode 12)
+
+- QR Designer 2.0: رنگ مستقل Finder، جهت گرادیان افقی/عمودی/مورب، Module Scale، تصویر پس‌زمینه، شکل و حاشیه لوگو
+- ذخیره و بارگذاری Presetهای طراحی؛ حداکثر 20 Preset محلی
+- Backup schema 3 شامل History/Folder/Tag + Settings + Design Presets؛ بدون PIN hash، Session یا Cloud token
+- Barcode Label Studio 2.0 با انتخاب Code128/Code39/EAN13/EAN8/DataMatrix، ابعاد سفارشی، نمایش/عدم نمایش قیمت و کد، PNG/PDF
+- Scanner 2.0 با مدیریت صحیح lifecycle منابع CameraX/ML Kit، Zoom، Torch، Continuous و Duplicate prevention تا 500 نتیجه
+- Start Page Scanner با ActivityResult واقعی؛ نتیجه اسکن صفحه شروع در History ثبت می‌شود
+- اجرای واقعی گزینه تأیید قبل از بازکردن لینک اسکن‌شده
+- Batch 2.0: CSV/TXT/XLSX تا 500 ردیف، Mapping ستون، PNG گروهی، ZIP مستقیم، PDF A4/A5 با ستون/ردیف سفارشی
+- افزایش ظرفیت History محلی از 100 به 500 رکورد بدون تغییر schema Room و بدون حذف داده موجود
+- قفل Biometric/Device Credential در کنار PIN محلی؛ داده بیومتریک داخل برنامه ذخیره نمی‌شود
+- Cloud Client امن و Backend-ready با Supabase Auth، Dynamic QR، Sync دوطرفه History و Analytics
+- اضافه‌شدن `backend/supabase/schema.sql` با RLS مالک‌محور و Edge Function عمومی `resolve-qr` برای Redirect
+- Publishable Key تنها کلید مجاز در APK است؛ Service Role فقط سمت Edge Function باقی می‌ماند
+- applicationId ثابت `com.waxew.qrbarcode` برای حفظ Update path
+
 ## 1.9.2 (versionCode 11)
 
 - تکمیل نهایی Roadmap آفلاین نسخه‌های 1.2 تا 1.9
