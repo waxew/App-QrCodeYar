@@ -1,0 +1,44 @@
+diff --git a/backend/supabase/README.md b/backend/supabase/README.md
+new file mode 100644
+index 0000000..019319a
+--- /dev/null
++++ b/backend/supabase/README.md
+@@ -0,0 +1,38 @@
++# App-QrCodeYar v2.0 Backend (Supabase)
++
++این پوشه Backend اختصاصی قابلیت‌های آنلاین QR یار را نگه می‌دارد. برنامه بدون این Backend نیز تمام قابلیت‌های آفلاین خود را اجرا می‌کند.
++
++## اجزا
++
++- `schema.sql` — جداول Dynamic QR، Cloud History و Analytics به‌همراه RLS و Policyهای مالکیتی.
++- `functions/resolve-qr/index.ts` — Resolver عمومی QR چاپ‌شده؛ Slug را به مقصد فعلی Redirect می‌کند و Scan Event را best-effort ثبت می‌کند.
++- `config.toml` — فقط برای `resolve-qr` مقدار `verify_jwt=false` دارد، چون اسکن‌کننده QR نباید حساب کاربری داشته باشد.
++
++## امنیت
++
++- Android فقط `SUPABASE_URL` و **Publishable Key** دریافت می‌کند.
++- `service_role` / Secret Key هرگز داخل APK یا GitHub عمومی قرار نمی‌گیرد.
++- تمام CRUD کاربر روی `dynamic_qr` و `cloud_history` با JWT خود کاربر و RLS مالکیتی محدود شده است.
++- Analytics فقط برای مالک همان Dynamic QR قابل خواندن است.
++- Resolver عمومی فقط `GET/HEAD` می‌پذیرد و امکان ویرایش QR ندارد.
++- Secret سرور از `SUPABASE_SECRET_KEYS` خوانده می‌شود و برای سازگاری پروژه‌های قدیمی fallback به `SUPABASE_SERVICE_ROLE_KEY` دارد.
++
++## فعال‌سازی روی پروژه اختصاصی
++
++1. یک پروژه Supabase اختصاصی برای QR یار بسازید.
++2. `schema.sql` را ابتدا روی محیط توسعه اجرا و سپس با Migration رسمی وارد کنید.
++3. Security/Performance Advisors را بررسی و خطاهای احتمالی را رفع کنید.
++4. Edge Function `resolve-qr` را با تنظیم همین `config.toml` Deploy کنید.
++5. Publishable Key پروژه و URL را در متغیرهای Build قرار دهید:
++   - `SUPABASE_URL`
++   - `SUPABASE_PUBLISHABLE_KEY`
++   - `DYNAMIC_QR_BASE_URL` (اختیاری؛ در صورت خالی بودن URL استاندارد Edge Function ساخته می‌شود)
++6. APK Release را با همان Production Signing Key نسخه‌های قبلی امضا کنید.
++
++نمونه `DYNAMIC_QR_BASE_URL`:
++
++`https://PROJECT_REF.supabase.co/functions/v1/resolve-qr?slug=`
++
++## نکته انتشار
++
++`resolve-qr` عمداً public است و هنگام Deploy باید `verify_jwt=false` بماند. عملیات مالکیتی و Sync از این Function عبور نمی‌کنند؛ آن‌ها مستقیماً با Publishable Key + JWT کاربر به Data API می‌روند و RLS آن‌ها را کنترل می‌کند.
