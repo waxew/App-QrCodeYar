@@ -132,14 +132,18 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.waxew.qrbarcode.BuildConfig
 import com.waxew.qrbarcode.batch.BatchInputReader
+import com.waxew.qrbarcode.batch.BatchTable
 import com.waxew.qrbarcode.billing.BillingManager
 import com.waxew.qrbarcode.billing.PremiumState
 import com.waxew.qrbarcode.data.PreferencesRepository
 import com.waxew.qrbarcode.export.ExportManager
+import com.waxew.qrbarcode.export.LabelPdfSpec
 import com.waxew.qrbarcode.generator.CodeGenerator
 import com.waxew.qrbarcode.generator.FinderStyle
 import com.waxew.qrbarcode.generator.FrameStyle
 import com.waxew.qrbarcode.generator.GeneratedCode
+import com.waxew.qrbarcode.generator.GradientDirection
+import com.waxew.qrbarcode.generator.LogoShape
 import com.waxew.qrbarcode.generator.ModuleStyle
 import com.waxew.qrbarcode.generator.QrDesign
 import com.waxew.qrbarcode.scanner.DecodedImageCode
@@ -148,6 +152,9 @@ import com.waxew.qrbarcode.scanner.LinkRiskLevel
 import com.waxew.qrbarcode.scanner.ScanSafetyAnalyzer
 import com.waxew.qrbarcode.update.UpdateChecker
 import com.waxew.qrbarcode.util.NumberFormatter
+import com.waxew.qrbarcode.v19.V19SettingsRepository
+import com.waxew.qrbarcode.v20.V20DesignPreset
+import com.waxew.qrbarcode.v20.V20DesignPresetStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -197,18 +204,25 @@ private data class QrDesignState(
     val moduleStyle: ModuleStyle = ModuleStyle.CLASSIC,
     val finderStyle: FinderStyle = FinderStyle.CLASSIC,
     val foreground: Int = AndroidColor.rgb(42, 34, 55),
+    val finderForeground: Int = AndroidColor.rgb(42, 34, 55),
     val gradientEnd: Int = AndroidColor.rgb(129, 103, 180),
     val gradientEnabled: Boolean = false,
+    val gradientDirection: GradientDirection = GradientDirection.DIAGONAL,
+    val moduleScale: Float = 1f,
     val background: Int = AndroidColor.WHITE,
     val transparentBackground: Boolean = false,
+    val backgroundImageUri: String? = null,
     val frameStyle: FrameStyle = FrameStyle.NONE,
     val frameText: String = "",
-    val logoUri: String? = null
+    val logoUri: String? = null,
+    val logoShape: LogoShape = LogoShape.ROUNDED,
+    val logoBorderColor: Int = AndroidColor.WHITE
 ) {
     fun professional(): Boolean =
         moduleStyle.premium || finderStyle.premium || gradientEnabled || transparentBackground ||
-            frameStyle.premium || logoUri != null || background != AndroidColor.WHITE ||
-            foreground != AndroidColor.rgb(42, 34, 55)
+            frameStyle.premium || logoUri != null || backgroundImageUri != null || background != AndroidColor.WHITE ||
+            foreground != AndroidColor.rgb(42, 34, 55) || finderForeground != foreground || moduleScale != 1f ||
+            logoShape != LogoShape.ROUNDED
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -514,6 +528,10 @@ private fun QrMakerScreen(
     var design by remember { mutableStateOf(QrDesignState()) }
     val undoStack = remember { mutableStateListOf<QrDesignState>() }
     val redoStack = remember { mutableStateListOf<QrDesignState>() }
+    val presetStore = remember(context) { V20DesignPresetStore(context) }
+    var presetName by remember { mutableStateOf("") }
+    var presetRevision by remember { mutableStateOf(0) }
+    val presets = remember(presetRevision) { presetStore.all() }
 
     fun commit(next: QrDesignState) {
         if (next == design) return
@@ -535,26 +553,69 @@ private fun QrMakerScreen(
         design = redoStack.removeAt(redoStack.lastIndex)
     }
 
+    fun savePreset() {
+        presetStore.save(V20DesignPreset(
+            name = presetName.ifBlank { "طرح ${presets.size + 1}" },
+            moduleStyle = design.moduleStyle, finderStyle = design.finderStyle,
+            foreground = design.foreground, finderForeground = design.finderForeground,
+            gradientEnd = design.gradientEnd, gradientEnabled = design.gradientEnabled,
+            gradientDirection = design.gradientDirection, moduleScale = design.moduleScale,
+            background = design.background, transparentBackground = design.transparentBackground,
+            backgroundImageUri = design.backgroundImageUri, frameStyle = design.frameStyle,
+            frameText = design.frameText, logoUri = design.logoUri, logoShape = design.logoShape,
+            logoBorderColor = design.logoBorderColor
+        ))
+        presetName = ""
+        presetRevision++
+        onMessage("Preset طراحی ذخیره شد.")
+    }
+
+    fun loadPreset(preset: V20DesignPreset) {
+        commit(QrDesignState(
+            moduleStyle = preset.moduleStyle, finderStyle = preset.finderStyle,
+            foreground = preset.foreground, finderForeground = preset.finderForeground,
+            gradientEnd = preset.gradientEnd, gradientEnabled = preset.gradientEnabled,
+            gradientDirection = preset.gradientDirection, moduleScale = preset.moduleScale,
+            background = preset.background, transparentBackground = preset.transparentBackground,
+            backgroundImageUri = preset.backgroundImageUri, frameStyle = preset.frameStyle,
+            frameText = preset.frameText, logoUri = preset.logoUri, logoShape = preset.logoShape,
+            logoBorderColor = preset.logoBorderColor
+        ))
+    }
+
     val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             commit(design.copy(logoUri = uri.toString()))
         }
     }
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            commit(design.copy(backgroundImageUri = uri.toString(), transparentBackground = false))
+        }
+    }
 
     val logoBitmap = remember(design.logoUri) { loadLocalBitmap(context, design.logoUri, 768) }
+    val backgroundBitmap = remember(design.backgroundImageUri) { loadLocalBitmap(context, design.backgroundImageUri, 1024) }
     val generatorDesign = remember(design, logoBitmap) {
         QrDesign(
             moduleStyle = design.moduleStyle,
             finderStyle = design.finderStyle,
             foreground = design.foreground,
+            finderForeground = design.finderForeground,
             gradientEnd = design.gradientEnd,
             gradientEnabled = design.gradientEnabled,
+            gradientDirection = design.gradientDirection,
+            moduleScale = design.moduleScale,
             background = design.background,
             transparentBackground = design.transparentBackground,
+            backgroundImage = backgroundBitmap,
             frameStyle = design.frameStyle,
             frameText = design.frameText,
-            logo = logoBitmap
+            logo = logoBitmap,
+            logoShape = design.logoShape,
+            logoBorderColor = design.logoBorderColor
         )
     }
     val payload = remember(kind, input) { buildQrPayload(kind, input) }
@@ -580,6 +641,24 @@ private fun QrMakerScreen(
                     Icon(Icons.Default.Redo, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
                     Text("دوباره")
+                }
+            }
+        }
+        item {
+            SectionTitle("Presetهای طراحی")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = presetName, onValueChange = { presetName = it.take(30) },
+                    modifier = Modifier.weight(1f), singleLine = true, label = { Text("نام Preset") }
+                )
+                Button(onClick = ::savePreset) { Text("ذخیره") }
+            }
+            if (presets.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    presets.forEach { preset ->
+                        OutlinedButton(onClick = { loadPreset(preset) }) { Text(preset.name) }
+                    }
                 }
             }
         }
@@ -628,6 +707,17 @@ private fun QrMakerScreen(
             }
         }
         item {
+            SectionTitle("رنگ Finder مستقل 👑")
+            ColorPalette(selected = design.finderForeground) { commit(design.copy(finderForeground = it)) }
+            Spacer(Modifier.height(12.dp))
+            Text("ضخامت ماژول", fontWeight = FontWeight.Bold)
+            ChipRow {
+                listOf(1f to "100%", 0.85f to "85%", 0.70f to "70%").forEach { (scale, title) ->
+                    ChoiceChip(title, selected = design.moduleScale == scale) { commit(design.copy(moduleScale = scale)) }
+                }
+            }
+        }
+        item {
             SectionTitle("رنگ و گرادیان")
             SettingsInlineSwitch(
                 title = "گرادیان",
@@ -644,6 +734,15 @@ private fun QrMakerScreen(
                 Text("رنگ انتهای گرادیان", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 ColorPalette(selected = design.gradientEnd) { commit(design.copy(gradientEnd = it)) }
+                Spacer(Modifier.height(12.dp))
+                Text("جهت گرادیان", fontWeight = FontWeight.Bold)
+                ChipRow {
+                    GradientDirection.entries.forEach { direction ->
+                        ChoiceChip(direction.title, selected = design.gradientDirection == direction) {
+                            commit(design.copy(gradientDirection = direction))
+                        }
+                    }
+                }
             }
         }
         item {
@@ -657,6 +756,17 @@ private fun QrMakerScreen(
             if (!design.transparentBackground) {
                 Spacer(Modifier.height(10.dp))
                 BackgroundPalette(selected = design.background) { commit(design.copy(background = it)) }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { backgroundPicker.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.AddPhotoAlternate, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (design.backgroundImageUri == null) "تصویر پس‌زمینه 👑" else "تعویض تصویر")
+                    }
+                    if (design.backgroundImageUri != null) {
+                        OutlinedButton(onClick = { commit(design.copy(backgroundImageUri = null)) }) { Text("حذف") }
+                    }
+                }
             }
         }
         item {
@@ -673,6 +783,18 @@ private fun QrMakerScreen(
                 if (design.logoUri != null) {
                     OutlinedButton(onClick = { commit(design.copy(logoUri = null)) }) { Text("حذف") }
                 }
+            }
+            if (design.logoUri != null) {
+                Spacer(Modifier.height(10.dp))
+                Text("شکل لوگو", fontWeight = FontWeight.Bold)
+                ChipRow {
+                    LogoShape.entries.forEach { shape ->
+                        ChoiceChip(shape.title, selected = design.logoShape == shape) { commit(design.copy(logoShape = shape)) }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("رنگ حاشیه لوگو", fontWeight = FontWeight.Bold)
+                ColorPalette(selected = design.logoBorderColor) { commit(design.copy(logoBorderColor = it)) }
             }
         }
         item {
@@ -966,6 +1088,26 @@ private fun ScannerScreen(preferences: PreferencesRepository, onMessage: (String
 @Composable
 private fun ScanResultCard(context: Context, item: DecodedImageCode) {
     val safety = remember(item.text) { ScanSafetyAnalyzer.analyze(item.text) }
+    val settings = remember(context) { V19SettingsRepository(context) }
+    var confirmOpen by remember(item.text) { mutableStateOf(false) }
+
+    if (confirmOpen) {
+        AlertDialog(
+            onDismissRequest = { confirmOpen = false },
+            title = { Text(if (safety.level == LinkRiskLevel.CAUTION) "هشدار لینک" else "باز کردن لینک") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(safety.message)
+                    Text(item.text, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { confirmOpen = false; openUrl(context, item.text) }) { Text("باز کردن") }
+            },
+            dismissButton = { TextButton(onClick = { confirmOpen = false }) { Text("لغو") } }
+        )
+    }
+
     Card(shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(item.format, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
@@ -998,7 +1140,12 @@ private fun ScanResultCard(context: Context, item: DecodedImageCode) {
                     Text("اشتراک")
                 }
                 if (safety.isUrl) {
-                    OutlinedButton(onClick = { openUrl(context, item.text) }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = {
+                            if (settings.confirmBeforeOpeningLinks) confirmOpen = true else openUrl(context, item.text)
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(Icons.Default.OpenInBrowser, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("بازکردن")
@@ -1019,19 +1166,23 @@ private fun BatchToolsScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var values by remember { mutableStateOf<List<String>>(emptyList()) }
+    var table by remember { mutableStateOf<BatchTable?>(null) }
+    var selectedColumn by remember { mutableStateOf(0) }
     var loading by remember { mutableStateOf(false) }
+    var paper by remember { mutableStateOf("A4") }
+    var columns by remember { mutableStateOf(3) }
+    var rows by remember { mutableStateOf(5) }
+    val values = table?.columnValues(selectedColumn).orEmpty()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             loading = true
             scope.launch {
-                values = withContext(Dispatchers.IO) { BatchInputReader.read(context, uri) }
+                table = withContext(Dispatchers.IO) { BatchInputReader.readTable(context, uri) }
+                selectedColumn = 0
                 loading = false
-                onMessage(
-                    if (values.isEmpty()) "داده قابل استفاده‌ای در فایل پیدا نشد."
-                    else "${NumberFormatter.groupInteger(values.size.toLong())} ردیف آماده شد."
-                )
+                val count = table?.rows?.size ?: 0
+                onMessage(if (count == 0) "داده قابل استفاده‌ای در فایل پیدا نشد." else "${NumberFormatter.groupInteger(count.toLong())} ردیف خوانده شد.")
             }
         }
     }
@@ -1043,93 +1194,107 @@ private fun BatchToolsScreen(
     ) {
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer), shape = RoundedCornerShape(24.dp)) {
-                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("ساخت گروهی QR", fontWeight = FontWeight.Black, style = MaterialTheme.typography.titleLarge)
-                    Text("CSV، TXT یا XLSX را انتخاب کن. اولین ستون هر ردیف به QR تبدیل می‌شود؛ حداکثر 100 ردیف.")
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("ساخت گروهی حرفه‌ای", fontWeight = FontWeight.Black)
+                    Text("CSV/TXT/XLSX تا 500 ردیف، انتخاب ستون، PNG، ZIP و PDF لیبل A4/A5 با چیدمان قابل تنظیم.")
                 }
             }
         }
         item {
             Button(
-                onClick = {
-                    picker.launch(
-                        arrayOf(
-                            "text/csv",
-                            "text/plain",
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            "application/octet-stream"
-                        )
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !loading
+                onClick = { picker.launch(arrayOf("text/*", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream")) },
+                modifier = Modifier.fillMaxWidth(), enabled = !loading
             ) {
                 Icon(Icons.Default.TableRows, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (loading) "در حال خواندن..." else "انتخاب CSV / XLSX")
+                Text(if (loading) "در حال خواندن..." else "انتخاب CSV / TXT / XLSX")
             }
         }
-        if (values.isNotEmpty()) {
+
+        val currentTable = table
+        if (currentTable != null && currentTable.columns.isNotEmpty()) {
             item {
-                Text(
-                    "پیش‌نمایش ${NumberFormatter.groupInteger(values.size.toLong())} ردیف",
-                    fontWeight = FontWeight.Black
-                )
-            }
-            items(values.take(10)) { value ->
-                Card(shape = RoundedCornerShape(16.dp)) {
-                    Text(value, Modifier.fillMaxWidth().padding(12.dp), maxLines = 2)
+                Text("ستون Payload", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    currentTable.columns.forEachIndexed { index, title ->
+                        OutlinedButton(onClick = { selectedColumn = index }) {
+                            Text(if (selectedColumn == index) "✓ $title" else title)
+                        }
+                    }
                 }
             }
-            if (values.size > 10) item { Text("… و ${values.size - 10} ردیف دیگر", style = MaterialTheme.typography.bodySmall) }
+            item {
+                Card(shape = RoundedCornerShape(16.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("تنظیم چاپ", fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { paper = "A4"; columns = 3; rows = 5 }) { Text(if (paper == "A4") "✓ A4" else "A4") }
+                            OutlinedButton(onClick = { paper = "A5"; columns = 2; rows = 4 }) { Text(if (paper == "A5") "✓ A5" else "A5") }
+                            OutlinedButton(onClick = { columns = if (columns >= 6) 1 else columns + 1 }) { Text("ستون: $columns") }
+                            OutlinedButton(onClick = { rows = if (rows >= 10) 1 else rows + 1 }) { Text("ردیف: $rows") }
+                        }
+                        Text("چیدمان سفارشی: $columns × $rows", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
+        if (values.isNotEmpty()) {
+            item { Text("پیش‌نمایش ${NumberFormatter.groupInteger(values.size.toLong())} مقدار", fontWeight = FontWeight.Black) }
+            items(values.take(10)) { value ->
+                Card(shape = RoundedCornerShape(16.dp)) { Text(value, Modifier.fillMaxWidth().padding(12.dp), maxLines = 2) }
+            }
+            if (values.size > 10) item { Text("… و ${values.size - 10} مقدار دیگر", style = MaterialTheme.typography.bodySmall) }
             item {
                 Button(
                     onClick = {
-                        if (!isPremium) {
-                            onNeedPremium()
-                        } else {
-                            scope.launch {
-                                val count = withContext(Dispatchers.IO) {
-                                    values.forEachIndexed { index, value ->
-                                        val code = CodeGenerator.qr(value, size = 768)
-                                        ExportManager.savePng(context, code.bitmap, "batch_qr_${index + 1}_${System.currentTimeMillis()}")
-                                        code.bitmap.recycle()
-                                    }
-                                    values.size
+                        if (!isPremium) onNeedPremium() else scope.launch {
+                            val count = withContext(Dispatchers.IO) {
+                                values.forEachIndexed { index, value ->
+                                    val code = CodeGenerator.qr(value, size = 768)
+                                    try { ExportManager.savePng(context, code.bitmap, "batch_qr_${index + 1}_${System.currentTimeMillis()}") } finally { code.bitmap.recycle() }
                                 }
-                                preferences.addHistory("BATCH-PNG", "$count QR")
-                                onMessage("${NumberFormatter.groupInteger(count.toLong())} فایل PNG ذخیره شد.")
+                                values.size
                             }
+                            preferences.addHistory("BATCH-PNG", "$count QR")
+                            onMessage("${NumberFormatter.groupInteger(count.toLong())} فایل PNG ذخیره شد.")
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    }, modifier = Modifier.fillMaxWidth()
                 ) { Text("خروجی PNG گروهی 👑") }
             }
             item {
                 OutlinedButton(
                     onClick = {
-                        if (!isPremium) {
-                            onNeedPremium()
-                        } else {
-                            scope.launch {
-                                runCatching {
-                                    withContext(Dispatchers.IO) {
-                                        val bitmaps = values.take(60).map { CodeGenerator.qr(it, size = 360).bitmap }
-                                        try {
-                                            ExportManager.saveA4LabelPdf(context, bitmaps, "qr_labels_${System.currentTimeMillis()}")
-                                        } finally {
-                                            bitmaps.forEach { it.recycle() }
-                                        }
-                                    }
-                                }.onSuccess {
-                                    preferences.addHistory("BATCH-A4", "${values.take(60).size} QR")
-                                    onMessage("PDF لیبل A4 ذخیره شد.")
-                                }.onFailure { onMessage(it.message ?: "ساخت PDF ناموفق بود.") }
-                            }
+                        if (!isPremium) onNeedPremium() else scope.launch {
+                            runCatching { withContext(Dispatchers.IO) { ExportManager.saveQrZip(context, values, "qr_batch_${System.currentTimeMillis()}") } }
+                                .onSuccess { preferences.addHistory("BATCH-ZIP", "${values.size} QR"); onMessage("ZIP گروهی در Downloads/QRStudio ذخیره شد.") }
+                                .onFailure { onMessage(it.message ?: "ساخت ZIP ناموفق بود.") }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("ساخت صفحه لیبل A4 👑") }
+                    }, modifier = Modifier.fillMaxWidth()
+                ) { Text("ساخت ZIP گروهی 👑") }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        if (!isPremium) onNeedPremium() else scope.launch {
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    val bitmaps = values.take(300).map { CodeGenerator.qr(it, size = 360).bitmap }
+                                    try {
+                                        val spec = if (paper == "A5") LabelPdfSpec.a5(columns, rows) else LabelPdfSpec.a4(columns, rows)
+                                        ExportManager.saveLabelPdf(context, bitmaps, "qr_labels_${System.currentTimeMillis()}", spec)
+                                    } finally { bitmaps.forEach { it.recycle() } }
+                                }
+                            }.onSuccess {
+                                preferences.addHistory("BATCH-$paper", "${values.take(300).size} QR")
+                                onMessage("PDF لیبل $paper با چیدمان $columns × $rows ذخیره شد.")
+                            }.onFailure { onMessage(it.message ?: "ساخت PDF ناموفق بود.") }
+                        }
+                    }, modifier = Modifier.fillMaxWidth()
+                ) { Text("ساخت PDF لیبل $paper 👑") }
             }
         }
     }

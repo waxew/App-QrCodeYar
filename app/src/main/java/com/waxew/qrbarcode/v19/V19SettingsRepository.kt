@@ -40,8 +40,15 @@ class V19SettingsRepository(context: Context) {
         set(value) = prefs.edit().putString("accent_name", sanitizeAccent(value)).apply()
 
     var startPage: String
-        get() = prefs.getString("start_page", "خانه") ?: "خانه"
+        get() = when (val value = prefs.getString("start_page", "خانه") ?: "خانه") {
+            "مرکز 1.9" -> "مرکز 2.0"
+            else -> value
+        }
         set(value) = prefs.edit().putString("start_page", sanitizeStartPage(value)).apply()
+
+    var biometricUnlock: Boolean
+        get() = prefs.getBoolean("biometric_unlock", false)
+        set(value) = prefs.edit().putBoolean("biometric_unlock", value).apply()
 
     var appLockEnabled: Boolean
         get() = prefs.getBoolean("app_lock", false)
@@ -56,6 +63,7 @@ class V19SettingsRepository(context: Context) {
         appendLine("compactMode=$compactMode")
         appendLine("accentName=$accentName")
         appendLine("startPage=$startPage")
+        appendLine("biometricUnlock=$biometricUnlock")
         appendLine("appLockEnabled=$appLockEnabled")
     }
 
@@ -77,6 +85,7 @@ class V19SettingsRepository(context: Context) {
         values["preventDuplicates"]?.toBooleanStrictOrNull()?.let { preventDuplicates = it }
         values["confirmBeforeOpeningLinks"]?.toBooleanStrictOrNull()?.let { confirmBeforeOpeningLinks = it }
         values["compactMode"]?.toBooleanStrictOrNull()?.let { compactMode = it }
+        values["biometricUnlock"]?.toBooleanStrictOrNull()?.let { biometricUnlock = it }
         values["accentName"]?.let { accentName = it }
         values["startPage"]?.let { startPage = it }
         // برای امنیت، appLockEnabled فقط در صورت وجود PIN واقعی در V19AppLock باید فعال شود؛
@@ -89,7 +98,7 @@ class V19SettingsRepository(context: Context) {
     }
 
     private fun sanitizeStartPage(value: String): String = when (value) {
-        "خانه", "اسکنر", "مرکز 1.9" -> value
+        "خانه", "اسکنر", "مرکز 1.9", "مرکز 2.0" -> value
         else -> "خانه"
     }
 }

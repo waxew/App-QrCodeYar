@@ -1,0 +1,283 @@
+/*
+ * App-QrCodeYar v2.0 - Cloud/Dynamic QR client برای Supabase.
+ *
+ * کلاینت فقط Publishable Key را از BuildConfig می‌خواند و عملیات مالکیتی با JWT همان کاربر
+ * انجام می‌شود. Service Role هرگز در APK قرار نمی‌گیرد. وقتی Backend تنظیم نشده باشد تمام
+ * توابع Cloud با خطای واضح متوقف می‌شوند و قابلیت‌های آفلاین برنامه بدون تغییر کار می‌کنند.
+ */
+package com.waxew.qrbarcode.v20
+
+import android.content.Context
+import com.waxew.qrbarcode.BuildConfig
+import com.waxew.qrbarcode.data.HistoryItem
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+
+data class V20CloudConfig(
+    val url: String,
+    val publishableKey: String,
+    val dynamicBaseUrl: String
+) {
+    val configured: Boolean get() = url.startsWith("https://") && publishableKey.isNotBlank()
+
+    companion object {
+        fun current(): V20CloudConfig {
+            val url = BuildConfig.SUPABASE_URL.trim().trimEnd('/')
+            val base = BuildConfig.DYNAMIC_QR_BASE_URL.trim().ifBlank {
+                if (url.isBlank()) "" else "$url/functions/v1/resolve-qr?slug="
+            }
+            return V20CloudConfig(url, BuildConfig.SUPABASE_PUBLISHABLE_KEY.trim(), base)
+        }
+    }
+}
+
+data class V20CloudSession(
+    val accessToken: String,
+    val refreshToken: String,
+    val userId: String,
+    val email: String
+)
+
+data class V20AuthResult(val session: V20CloudSession?, val message: String)
+
+data class V20DynamicQr(
+    val id: String,
+    val slug: String,
+    val destinationUrl: String,
+    val enabled: Boolean,
+    val publicUrl: String
+)
+
+data class V20Analytics(
+    val totalRecentScans: Int,
+    val countries: Map<String, Int>,
+    val cities: Map<String, Int>
+)
+
+class V20CloudClient(context: Context) {
+    val config: V20CloudConfig = V20CloudConfig.current()
+    private val prefs = context.applicationContext.getSharedPreferences("qrcodeyar_cloud_v2", Context.MODE_PRIVATE)
+
+    fun session(): V20CloudSession? {
+        val token = prefs.getString("access_token", null)?.takeIf { it.isNotBlank() } ?: return null
+        val userId = prefs.getString("user_id", null)?.takeIf { it.isNotBlank() } ?: return null
+        return V20CloudSession(
+            accessToken = token,
+            refreshToken = prefs.getString("refresh_token", "").orEmpty(),
+            userId = userId,
+            email = prefs.getString("email", "").orEmpty()
+        )
+    }
+
+    suspend fun signIn(email: String, password: String): V20AuthResult = withContext(Dispatchers.IO) {
+        requireConfigured()
+        require(email.contains('@')) { "ایمیل معتبر نیست." }
+        require(password.length >= 6) { "رمز عبور حداقل 6 کاراکتر باشد." }
+        val body = JSONObject().put("email", email.trim()).put("password", password).toString()
+        val response = request("POST", "/auth/v1/token?grant_type=password", body = body)
+        val session = parseSession(JSONObject(response), email.trim())
+        saveSession(session)
+        V20AuthResult(session, "ورود ابری انجام شد.")
+    }
+
+    suspend fun signUp(email: String, password: String): V20AuthResult = withContext(Dispatchers.IO) {
+        requireConfigured()
+        require(email.contains('@')) { "ایمیل معتبر نیست." }
+        require(password.length >= 6) { "رمز عبور حداقل 6 کاراکتر باشد." }
+        val body = JSONObject().put("email", email.trim()).put("password", password).toString()
+        val json = JSONObject(request("POST", "/auth/v1/signup", body = body))
+        val token = json.optString("access_token")
+        if (token.isBlank()) return@withContext V20AuthResult(null, "ثبت‌نام انجام شد؛ ایمیل را تأیید و سپس وارد شوید.")
+        val session = parseSession(json, email.trim())
+        saveSession(session)
+        V20AuthResult(session, "حساب ابری ساخته و وارد شد.")
+    }
+
+    suspend fun refreshSession(): V20CloudSession = withContext(Dispatchers.IO) {
+        requireConfigured()
+        val current = session() ?: error("ابتدا وارد حساب ابری شوید.")
+        require(current.refreshToken.isNotBlank()) { "Refresh token موجود نیست؛ دوباره وارد شوید." }
+        val body = JSONObject().put("refresh_token", current.refreshToken).toString()
+        val refreshed = parseSession(JSONObject(request("POST", "/auth/v1/token?grant_type=refresh_token", body = body)), current.email)
+        saveSession(refreshed)
+        refreshed
+    }
+
+    fun signOutLocal() {
+        prefs.edit().clear().apply()
+    }
+
+    suspend fun upsertDynamicQr(slug: String, destinationUrl: String): V20DynamicQr = withContext(Dispatchers.IO) {
+        requireConfigured()
+        val current = requireSession()
+        val safeSlug = slug.trim().lowercase()
+        require(Regex("^[a-z0-9][a-z0-9_-]{2,39}$").matches(safeSlug)) { "Slug باید 3 تا 40 کاراکتر انگلیسی/عدد/-/_ باشد." }
+        val destination = destinationUrl.trim()
+        require(destination.startsWith("https://") || destination.startsWith("http://")) { "مقصد باید URL معتبر HTTP/HTTPS باشد." }
+        val body = JSONObject()
+            .put("owner_id", current.userId)
+            .put("slug", safeSlug)
+            .put("destination_url", destination)
+            .put("enabled", true)
+            .toString()
+        val response = request(
+            "POST",
+            "/rest/v1/dynamic_qr?on_conflict=slug&select=id,slug,destination_url,enabled",
+            body = body,
+            accessToken = current.accessToken,
+            extraHeaders = mapOf("Prefer" to "resolution=merge-duplicates,return=representation")
+        )
+        val row = JSONArray(response).optJSONObject(0) ?: error("Backend پاسخ قابل استفاده‌ای برنگرداند.")
+        V20DynamicQr(
+            id = row.getString("id"),
+            slug = row.getString("slug"),
+            destinationUrl = row.getString("destination_url"),
+            enabled = row.optBoolean("enabled", true),
+            publicUrl = publicUrl(row.getString("slug"))
+        )
+    }
+
+    suspend fun pushHistory(history: List<HistoryItem>) = withContext(Dispatchers.IO) {
+        requireConfigured()
+        val current = requireSession()
+        val rows = JSONArray()
+        history.take(500).forEach { item ->
+            rows.put(JSONObject()
+                .put("user_id", current.userId)
+                .put("client_created_at", item.createdAt)
+                .put("kind", item.kind.take(40))
+                .put("payload", item.payload.take(1000))
+                .put("favorite", item.favorite)
+                .put("folder", item.folder.take(40))
+                .put("tags", item.tags.take(300)))
+        }
+        if (rows.length() == 0) return@withContext
+        request(
+            "POST",
+            "/rest/v1/cloud_history?on_conflict=user_id,client_created_at",
+            body = rows.toString(),
+            accessToken = current.accessToken,
+            extraHeaders = mapOf("Prefer" to "resolution=merge-duplicates,return=minimal")
+        )
+    }
+
+    suspend fun pullHistory(): List<HistoryItem> = withContext(Dispatchers.IO) {
+        requireConfigured()
+        val current = requireSession()
+        val response = request(
+            "GET",
+            "/rest/v1/cloud_history?select=client_created_at,kind,payload,favorite,folder,tags&order=client_created_at.desc&limit=500",
+            accessToken = current.accessToken
+        )
+        val array = JSONArray(response)
+        buildList {
+            for (i in 0 until array.length()) {
+                val row = array.optJSONObject(i) ?: continue
+                val payload = row.optString("payload").take(1000)
+                if (payload.isBlank()) continue
+                add(HistoryItem(
+                    kind = row.optString("kind").take(40),
+                    payload = payload,
+                    createdAt = row.optLong("client_created_at"),
+                    favorite = row.optBoolean("favorite", false),
+                    folder = row.optString("folder").take(40),
+                    tags = row.optString("tags").take(300)
+                ))
+            }
+        }
+    }
+
+    suspend fun analytics(slug: String): V20Analytics = withContext(Dispatchers.IO) {
+        requireConfigured()
+        val current = requireSession()
+        val encodedSlug = URLEncoder.encode(slug.trim().lowercase(), "UTF-8")
+        val qrRows = JSONArray(request(
+            "GET",
+            "/rest/v1/dynamic_qr?slug=eq.$encodedSlug&select=id&limit=1",
+            accessToken = current.accessToken
+        ))
+        val id = qrRows.optJSONObject(0)?.optString("id")?.takeIf { it.isNotBlank() }
+            ?: error("Dynamic QR پیدا نشد.")
+        val events = JSONArray(request(
+            "GET",
+            "/rest/v1/qr_scan_events?dynamic_qr_id=eq.$id&select=scanned_at,country_code,city&order=scanned_at.desc&limit=500",
+            accessToken = current.accessToken
+        ))
+        val countries = linkedMapOf<String, Int>()
+        val cities = linkedMapOf<String, Int>()
+        for (i in 0 until events.length()) {
+            val row = events.optJSONObject(i) ?: continue
+            val country = row.optString("country_code").ifBlank { "نامشخص" }
+            val city = row.optString("city").ifBlank { "نامشخص" }
+            countries[country] = (countries[country] ?: 0) + 1
+            cities[city] = (cities[city] ?: 0) + 1
+        }
+        V20Analytics(events.length(), countries, cities)
+    }
+
+    fun publicUrl(slug: String): String {
+        require(config.dynamicBaseUrl.isNotBlank()) { "آدرس عمومی Dynamic QR تنظیم نشده است." }
+        return config.dynamicBaseUrl + URLEncoder.encode(slug.trim().lowercase(), "UTF-8")
+    }
+
+    private fun requireConfigured() = require(config.configured) { "Backend اختصاصی QR یار هنوز تنظیم نشده است." }
+    private fun requireSession(): V20CloudSession = session() ?: error("ابتدا وارد حساب ابری شوید.")
+
+    private fun parseSession(json: JSONObject, fallbackEmail: String): V20CloudSession {
+        val token = json.optString("access_token").takeIf { it.isNotBlank() } ?: error("توکن ورود دریافت نشد.")
+        val user = json.optJSONObject("user") ?: error("اطلاعات کاربر دریافت نشد.")
+        return V20CloudSession(
+            accessToken = token,
+            refreshToken = json.optString("refresh_token"),
+            userId = user.optString("id").takeIf { it.isNotBlank() } ?: error("شناسه کاربر دریافت نشد."),
+            email = user.optString("email").ifBlank { fallbackEmail }
+        )
+    }
+
+    private fun saveSession(session: V20CloudSession) {
+        prefs.edit()
+            .putString("access_token", session.accessToken)
+            .putString("refresh_token", session.refreshToken)
+            .putString("user_id", session.userId)
+            .putString("email", session.email)
+            .apply()
+    }
+
+    private fun request(
+        method: String,
+        path: String,
+        body: String? = null,
+        accessToken: String? = null,
+        extraHeaders: Map<String, String> = emptyMap()
+    ): String {
+        val connection = (URL(config.url + path).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            setRequestProperty("apikey", config.publishableKey)
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (!accessToken.isNullOrBlank()) setRequestProperty("Authorization", "Bearer $accessToken")
+            extraHeaders.forEach { (name, value) -> setRequestProperty(name, value) }
+            if (body != null) doOutput = true
+        }
+        try {
+            if (body != null) connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if (code !in 200..299) {
+                val message = runCatching { JSONObject(text).optString("msg").ifBlank { JSONObject(text).optString("message") } }.getOrNull()
+                error(message?.takeIf { it.isNotBlank() } ?: "Cloud API error: HTTP $code")
+            }
+            return text.ifBlank { "[]" }
+        } finally {
+            connection.disconnect()
+        }
+    }
+}

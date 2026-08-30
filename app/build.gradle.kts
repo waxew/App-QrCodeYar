@@ -9,6 +9,11 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+
+fun envBuildString(name: String): String = (System.getenv(name) ?: "")
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 android {
     namespace = "com.waxew.qrbarcode"
     compileSdk = 35
@@ -17,9 +22,12 @@ android {
         applicationId = "com.waxew.qrbarcode"
         minSdk = 23
         targetSdk = 35
-        versionCode = 11
-        versionName = "1.9.2"
+        versionCode = 12
+        versionName = "2.0.0"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField("String", "SUPABASE_URL", "\"${envBuildString("SUPABASE_URL")}\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"${envBuildString("SUPABASE_PUBLISHABLE_KEY")}\"")
+        buildConfigField("String", "DYNAMIC_QR_BASE_URL", "\"${envBuildString("DYNAMIC_QR_BASE_URL")}\"")
     }
 
     signingConfigs {
@@ -96,6 +104,7 @@ dependencies {
     kapt("androidx.room:room-compiler:2.8.4")
 
     implementation("com.android.billingclient:billing:9.1.0")
+    implementation("androidx.biometric:biometric:1.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

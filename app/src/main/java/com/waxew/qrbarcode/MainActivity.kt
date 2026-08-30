@@ -1,11 +1,11 @@
 /*
  * نقطه ورود App-QrCodeYar.
- * سرویس‌های اصلی و تنظیمات نسخه 1.9 فقط یک بار ساخته می‌شوند و به ریشه Compose تزریق می‌شوند.
+ * سرویس‌های اصلی و تنظیمات نسخه 2.0 فقط یک بار ساخته می‌شوند و به ریشه Compose تزریق می‌شوند.
  */
 package com.waxew.qrbarcode
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import com.waxew.qrbarcode.billing.BillingManager
 import com.waxew.qrbarcode.data.PreferencesRepository
@@ -14,7 +14,7 @@ import com.waxew.qrbarcode.ui.theme.QrStudioTheme
 import com.waxew.qrbarcode.v19.V19AppLock
 import com.waxew.qrbarcode.v19.V19SettingsRepository
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var billingManager: BillingManager
     private lateinit var preferences: PreferencesRepository
     private lateinit var v19Settings: V19SettingsRepository

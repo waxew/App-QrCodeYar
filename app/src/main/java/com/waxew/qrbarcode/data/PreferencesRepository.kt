@@ -73,12 +73,12 @@ class PreferencesRepository(context: Context) {
         cachedHistory = buildList {
             add(newItem)
             addAll(cachedHistory.filterNot { it.kind == kind && it.payload == safePayload })
-        }.take(100)
+        }.take(500)
 
         scope.launch {
             dao.deleteMatching(kind, safePayload)
             dao.insert(HistoryEntity(now, kind, safePayload, newItem.favorite, newItem.folder, newItem.tags))
-            dao.trimToLatest100()
+            dao.trimToLatest500()
         }
     }
 
@@ -138,7 +138,7 @@ class PreferencesRepository(context: Context) {
             dao.insertAll(sanitized.map {
                 HistoryEntity(it.createdAt, it.kind, it.payload, it.favorite, it.folder, it.tags)
             })
-            dao.trimToLatest100()
+            dao.trimToLatest500()
         }
     }
 
@@ -173,9 +173,9 @@ class PreferencesRepository(context: Context) {
                                 )
                             )
                         }
-                    }.take(100)
+                    }.take(500)
                     dao.insertAll(oldRows)
-                    dao.trimToLatest100()
+                    dao.trimToLatest500()
                 }
                 prefs.edit().putBoolean("history_room_migrated_v1", true).apply()
             }

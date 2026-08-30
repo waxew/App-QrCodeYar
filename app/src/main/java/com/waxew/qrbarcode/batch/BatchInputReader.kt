@@ -1,9 +1,8 @@
 /*
- * App-QrCodeYar - ورود گروهی داده برای QR
+ * App-QrCodeYar v2.0 - ورود گروهی CSV/TXT/XLSX با انتخاب ستون.
  *
- * کاربر می‌تواند CSV/TXT یا XLSX انتخاب کند. برای XLSX فقط Sheet اول و اولین سلول غیرخالی
- * هر ردیف خوانده می‌شود؛ این رفتار عمداً ساده است تا بدون کتابخانه سنگین Office روی Android
- * کار کند. حداکثر 100 ردیف برای جلوگیری از مصرف زیاد حافظه پردازش می‌شود.
+ * این Reader هم API قدیمی read() را حفظ می‌کند و هم readTable() را برای Mapping ستون‌ها
+ * در اختیار UI می‌گذارد. حداکثر 500 ردیف خوانده می‌شود تا پردازش گروهی کنترل‌شده بماند.
  */
 package com.waxew.qrbarcode.batch
 
@@ -13,57 +12,80 @@ import android.provider.OpenableColumns
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 
-object BatchInputReader {
-    private const val LIMIT = 100
+data class BatchTable(
+    val columns: List<String>,
+    val rows: List<List<String>>
+) {
+    fun columnValues(index: Int): List<String> {
+        if (index !in columns.indices) return emptyList()
+        return rows.mapNotNull { row -> row.getOrNull(index)?.trim()?.takeIf { it.isNotBlank() } }
+            .distinct()
+    }
+}
 
-    fun read(context: Context, uri: Uri): List<String> {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return emptyList()
+object BatchInputReader {
+    private const val LIMIT = 500
+
+    /** API سازگار با نسخه قبل: اولین ستون غیرخالی را برمی‌گرداند. */
+    fun read(context: Context, uri: Uri): List<String> = readTable(context, uri).columnValues(0)
+
+    /** فایل را به جدول چندستونه تبدیل می‌کند تا کاربر ستون Payload را انتخاب کند. */
+    fun readTable(context: Context, uri: Uri): BatchTable {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return BatchTable(emptyList(), emptyList())
         val name = displayName(context, uri).lowercase()
         val isXlsx = name.endsWith(".xlsx") || (bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte())
-        return if (isXlsx) readXlsx(bytes) else readDelimited(bytes.toString(Charsets.UTF_8))
+        return if (isXlsx) readXlsxTable(bytes) else readDelimitedTable(bytes.toString(Charsets.UTF_8))
     }
 
-    // CSV/TSV/TXT: اولین ستون غیرخالی هر خط به‌عنوان payload در نظر گرفته می‌شود.
-    private fun readDelimited(text: String): List<String> {
-        return text
-            .lineSequence()
-            .map { it.removePrefix("\uFEFF").trim() }
+    private fun readDelimitedTable(text: String): BatchTable {
+        val rawLines = text.lineSequence()
+            .map { it.removePrefix("\uFEFF").trimEnd() }
             .filter { it.isNotBlank() }
-            .mapNotNull { line -> firstCell(line)?.trim()?.trim('"')?.takeIf { it.isNotBlank() } }
-            .distinct()
             .take(LIMIT)
             .toList()
+        if (rawLines.isEmpty()) return BatchTable(emptyList(), emptyList())
+
+        val delimiter = detectDelimiter(rawLines.first())
+        val rows = rawLines.map { parseDelimitedLine(it, delimiter) }
+        val width = rows.maxOfOrNull { it.size } ?: 1
+        val normalized = rows.map { row -> List(width) { index -> row.getOrElse(index) { "" }.trim() } }
+        return BatchTable(List(width) { "ستون ${it + 1}" }, normalized)
     }
 
-    private fun firstCell(line: String): String? {
-        val delimiter = when {
-            line.contains('\t') -> '\t'
-            line.contains(';') && !line.contains(',') -> ';'
-            else -> ','
-        }
-        if (!line.startsWith('"')) return line.substringBefore(delimiter)
+    private fun detectDelimiter(line: String): Char = when {
+        line.contains('\t') -> '\t'
+        line.count { it == ';' } > line.count { it == ',' } -> ';'
+        else -> ','
+    }
 
-        // parser کوچک برای سلول quoted؛ "" داخل CSV به " تبدیل می‌شود.
-        val out = StringBuilder()
-        var index = 1
+    /** CSV parser کوچک با پشتیبانی از quoted cell و "" داخل متن. */
+    private fun parseDelimitedLine(line: String, delimiter: Char): List<String> {
+        val result = mutableListOf<String>()
+        val cell = StringBuilder()
+        var quoted = false
+        var index = 0
         while (index < line.length) {
             val ch = line[index]
-            if (ch == '"') {
-                if (index + 1 < line.length && line[index + 1] == '"') {
-                    out.append('"')
-                    index += 2
-                    continue
+            when {
+                ch == '"' && quoted && index + 1 < line.length && line[index + 1] == '"' -> {
+                    cell.append('"')
+                    index++
                 }
-                break
+                ch == '"' -> quoted = !quoted
+                ch == delimiter && !quoted -> {
+                    result += cell.toString()
+                    cell.clear()
+                }
+                else -> cell.append(ch)
             }
-            out.append(ch)
             index++
         }
-        return out.toString()
+        result += cell.toString()
+        return result
     }
 
-    // XLSX در اصل ZIP شامل XML است. فقط sharedStrings و sheet1 برای نیاز این برنامه خوانده می‌شوند.
-    private fun readXlsx(bytes: ByteArray): List<String> {
+    // XLSX یک ZIP از XML است؛ sharedStrings و sheet1 برای پردازش آفلاین خوانده می‌شوند.
+    private fun readXlsxTable(bytes: ByteArray): BatchTable {
         val entries = mutableMapOf<String, String>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
@@ -75,19 +97,23 @@ object BatchInputReader {
             }
         }
 
-        val sheet = entries["xl/worksheets/sheet1.xml"] ?: return emptyList()
+        val sheet = entries["xl/worksheets/sheet1.xml"] ?: return BatchTable(emptyList(), emptyList())
         val shared = parseSharedStrings(entries["xl/sharedStrings.xml"].orEmpty())
         val rows = Regex("<row\\b[^>]*>(.*?)</row>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
             .findAll(sheet)
-
-        return rows.mapNotNull { rowMatch ->
-            val rowBody = rowMatch.groupValues[1]
-            val cell = Regex("<c\\b([^>]*)>(.*?)</c>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
-                .findAll(rowBody)
-                .mapNotNull { cellMatch -> decodeCell(cellMatch.groupValues[1], cellMatch.groupValues[2], shared) }
-                .firstOrNull { it.isNotBlank() }
-            cell?.trim()
-        }.filter { it.isNotBlank() }.distinct().take(LIMIT).toList()
+            .take(LIMIT)
+            .map { rowMatch ->
+                Regex("<c\\b([^>]*)>(.*?)</c>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+                    .findAll(rowMatch.groupValues[1])
+                    .map { cellMatch -> decodeCell(cellMatch.groupValues[1], cellMatch.groupValues[2], shared).orEmpty().trim() }
+                    .toList()
+            }
+            .filter { row -> row.any { it.isNotBlank() } }
+            .toList()
+        val width = rows.maxOfOrNull { it.size } ?: 0
+        if (width == 0) return BatchTable(emptyList(), emptyList())
+        val normalized = rows.map { row -> List(width) { index -> row.getOrElse(index) { "" } } }
+        return BatchTable(List(width) { "ستون ${it + 1}" }, normalized)
     }
 
     private fun parseSharedStrings(xml: String): List<String> {
@@ -107,18 +133,15 @@ object BatchInputReader {
         val inline = Regex("<t\\b[^>]*>(.*?)</t>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
             .find(body)?.groupValues?.getOrNull(1)
         if (inline != null) return unescapeXml(inline)
-
         val value = Regex("<v>(.*?)</v>", RegexOption.DOT_MATCHES_ALL).find(body)?.groupValues?.getOrNull(1) ?: return null
         return if (typeShared) shared.getOrNull(value.trim().toIntOrNull() ?: -1) else unescapeXml(value)
     }
 
-    private fun displayName(context: Context, uri: Uri): String {
-        return runCatching {
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else ""
-            }.orEmpty()
-        }.getOrDefault("")
-    }
+    private fun displayName(context: Context, uri: Uri): String = runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else ""
+        }.orEmpty()
+    }.getOrDefault("")
 
     private fun unescapeXml(value: String): String = value
         .replace("&amp;", "&")
