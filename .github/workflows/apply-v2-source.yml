@@ -36,6 +36,9 @@ jobs:
             git apply "$patch"
           done
 
+          # GitHub Actions' own token cannot push edits to workflow files. The Android CI file is
+          # updated separately through the repository connector after this source commit succeeds.
+          git restore --source=HEAD -- .github/workflows/android.yml
           rm -rf .github/patches
 
           git config user.name "github-actions[bot]"
