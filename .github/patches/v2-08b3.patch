@@ -1,0 +1,10 @@
+diff --git a/backend/supabase/config.toml b/backend/supabase/config.toml
+new file mode 100644
+index 0000000..7b5ddb7
+--- /dev/null
++++ b/backend/supabase/config.toml
+@@ -0,0 +1,4 @@
++# The resolver is intentionally public because users scan printed QR codes without an app session.
++# Authorization for editing/analytics stays behind authenticated Data API + RLS policies.
++[functions.resolve-qr]
++verify_jwt = false
