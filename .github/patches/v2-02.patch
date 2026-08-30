@@ -1,0 +1,379 @@
+diff --git a/app/src/main/java/com/waxew/qrbarcode/batch/BatchInputReader.kt b/app/src/main/java/com/waxew/qrbarcode/batch/BatchInputReader.kt
+index ebc8294..be2c8e7 100644
+--- a/app/src/main/java/com/waxew/qrbarcode/batch/BatchInputReader.kt
++++ b/app/src/main/java/com/waxew/qrbarcode/batch/BatchInputReader.kt
+@@ -1,9 +1,8 @@
+ /*
+- * App-QrCodeYar - ورود گروهی داده برای QR
++ * App-QrCodeYar v2.0 - ورود گروهی CSV/TXT/XLSX با انتخاب ستون.
+  *
+- * کاربر می‌تواند CSV/TXT یا XLSX انتخاب کند. برای XLSX فقط Sheet اول و اولین سلول غیرخالی
+- * هر ردیف خوانده می‌شود؛ این رفتار عمداً ساده است تا بدون کتابخانه سنگین Office روی Android
+- * کار کند. حداکثر 100 ردیف برای جلوگیری از مصرف زیاد حافظه پردازش می‌شود.
++ * این Reader هم API قدیمی read() را حفظ می‌کند و هم readTable() را برای Mapping ستون‌ها
++ * در اختیار UI می‌گذارد. حداکثر 500 ردیف خوانده می‌شود تا پردازش گروهی کنترل‌شده بماند.
+  */
+ package com.waxew.qrbarcode.batch
+ 
+@@ -13,57 +12,80 @@ import android.provider.OpenableColumns
+ import java.io.ByteArrayInputStream
+ import java.util.zip.ZipInputStream
+ 
++data class BatchTable(
++    val columns: List<String>,
++    val rows: List<List<String>>
++) {
++    fun columnValues(index: Int): List<String> {
++        if (index !in columns.indices) return emptyList()
++        return rows.mapNotNull { row -> row.getOrNull(index)?.trim()?.takeIf { it.isNotBlank() } }
++            .distinct()
++    }
++}
++
+ object BatchInputReader {
+-    private const val LIMIT = 100
++    private const val LIMIT = 500
+ 
+-    fun read(context: Context, uri: Uri): List<String> {
+-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return emptyList()
++    /** API سازگار با نسخه قبل: اولین ستون غیرخالی را برمی‌گرداند. */
++    fun read(context: Context, uri: Uri): List<String> = readTable(context, uri).columnValues(0)
++
++    /** فایل را به جدول چندستونه تبدیل می‌کند تا کاربر ستون Payload را انتخاب کند. */
++    fun readTable(context: Context, uri: Uri): BatchTable {
++        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return BatchTable(emptyList(), emptyList())
+         val name = displayName(context, uri).lowercase()
+         val isXlsx = name.endsWith(".xlsx") || (bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte())
+-        return if (isXlsx) readXlsx(bytes) else readDelimited(bytes.toString(Charsets.UTF_8))
++        return if (isXlsx) readXlsxTable(bytes) else readDelimitedTable(bytes.toString(Charsets.UTF_8))
+     }
+ 
+-    // CSV/TSV/TXT: اولین ستون غیرخالی هر خط به‌عنوان payload در نظر گرفته می‌شود.
+-    private fun readDelimited(text: String): List<String> {
+-        return text
+-            .lineSequence()
+-            .map { it.removePrefix("\uFEFF").trim() }
++    private fun readDelimitedTable(text: String): BatchTable {
++        val rawLines = text.lineSequence()
++            .map { it.removePrefix("\uFEFF").trimEnd() }
+             .filter { it.isNotBlank() }
+-            .mapNotNull { line -> firstCell(line)?.trim()?.trim('"')?.takeIf { it.isNotBlank() } }
+-            .distinct()
+             .take(LIMIT)
+             .toList()
++        if (rawLines.isEmpty()) return BatchTable(emptyList(), emptyList())
++
++        val delimiter = detectDelimiter(rawLines.first())
++        val rows = rawLines.map { parseDelimitedLine(it, delimiter) }
++        val width = rows.maxOfOrNull { it.size } ?: 1
++        val normalized = rows.map { row -> List(width) { index -> row.getOrElse(index) { "" }.trim() } }
++        return BatchTable(List(width) { "ستون ${it + 1}" }, normalized)
+     }
+ 
+-    private fun firstCell(line: String): String? {
+-        val delimiter = when {
+-            line.contains('\t') -> '\t'
+-            line.contains(';') && !line.contains(',') -> ';'
+-            else -> ','
+-        }
+-        if (!line.startsWith('"')) return line.substringBefore(delimiter)
++    private fun detectDelimiter(line: String): Char = when {
++        line.contains('\t') -> '\t'
++        line.count { it == ';' } > line.count { it == ',' } -> ';'
++        else -> ','
++    }
+ 
+-        // parser کوچک برای سلول quoted؛ "" داخل CSV به " تبدیل می‌شود.
+-        val out = StringBuilder()
+-        var index = 1
++    /** CSV parser کوچک با پشتیبانی از quoted cell و "" داخل متن. */
++    private fun parseDelimitedLine(line: String, delimiter: Char): List<String> {
++        val result = mutableListOf<String>()
++        val cell = StringBuilder()
++        var quoted = false
++        var index = 0
+         while (index < line.length) {
+             val ch = line[index]
+-            if (ch == '"') {
+-                if (index + 1 < line.length && line[index + 1] == '"') {
+-                    out.append('"')
+-                    index += 2
+-                    continue
++            when {
++                ch == '"' && quoted && index + 1 < line.length && line[index + 1] == '"' -> {
++                    cell.append('"')
++                    index++
++                }
++                ch == '"' -> quoted = !quoted
++                ch == delimiter && !quoted -> {
++                    result += cell.toString()
++                    cell.clear()
+                 }
+-                break
++                else -> cell.append(ch)
+             }
+-            out.append(ch)
+             index++
+         }
+-        return out.toString()
++        result += cell.toString()
++        return result
+     }
+ 
+-    // XLSX در اصل ZIP شامل XML است. فقط sharedStrings و sheet1 برای نیاز این برنامه خوانده می‌شوند.
+-    private fun readXlsx(bytes: ByteArray): List<String> {
++    // XLSX یک ZIP از XML است؛ sharedStrings و sheet1 برای پردازش آفلاین خوانده می‌شوند.
++    private fun readXlsxTable(bytes: ByteArray): BatchTable {
+         val entries = mutableMapOf<String, String>()
+         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+             while (true) {
+@@ -75,19 +97,23 @@ object BatchInputReader {
+             }
+         }
+ 
+-        val sheet = entries["xl/worksheets/sheet1.xml"] ?: return emptyList()
++        val sheet = entries["xl/worksheets/sheet1.xml"] ?: return BatchTable(emptyList(), emptyList())
+         val shared = parseSharedStrings(entries["xl/sharedStrings.xml"].orEmpty())
+         val rows = Regex("<row\\b[^>]*>(.*?)</row>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+             .findAll(sheet)
+-
+-        return rows.mapNotNull { rowMatch ->
+-            val rowBody = rowMatch.groupValues[1]
+-            val cell = Regex("<c\\b([^>]*)>(.*?)</c>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+-                .findAll(rowBody)
+-                .mapNotNull { cellMatch -> decodeCell(cellMatch.groupValues[1], cellMatch.groupValues[2], shared) }
+-                .firstOrNull { it.isNotBlank() }
+-            cell?.trim()
+-        }.filter { it.isNotBlank() }.distinct().take(LIMIT).toList()
++            .take(LIMIT)
++            .map { rowMatch ->
++                Regex("<c\\b([^>]*)>(.*?)</c>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
++                    .findAll(rowMatch.groupValues[1])
++                    .map { cellMatch -> decodeCell(cellMatch.groupValues[1], cellMatch.groupValues[2], shared).orEmpty().trim() }
++                    .toList()
++            }
++            .filter { row -> row.any { it.isNotBlank() } }
++            .toList()
++        val width = rows.maxOfOrNull { it.size } ?: 0
++        if (width == 0) return BatchTable(emptyList(), emptyList())
++        val normalized = rows.map { row -> List(width) { index -> row.getOrElse(index) { "" } } }
++        return BatchTable(List(width) { "ستون ${it + 1}" }, normalized)
+     }
+ 
+     private fun parseSharedStrings(xml: String): List<String> {
+@@ -107,18 +133,15 @@ object BatchInputReader {
+         val inline = Regex("<t\\b[^>]*>(.*?)</t>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE))
+             .find(body)?.groupValues?.getOrNull(1)
+         if (inline != null) return unescapeXml(inline)
+-
+         val value = Regex("<v>(.*?)</v>", RegexOption.DOT_MATCHES_ALL).find(body)?.groupValues?.getOrNull(1) ?: return null
+         return if (typeShared) shared.getOrNull(value.trim().toIntOrNull() ?: -1) else unescapeXml(value)
+     }
+ 
+-    private fun displayName(context: Context, uri: Uri): String {
+-        return runCatching {
+-            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+-                if (cursor.moveToFirst()) cursor.getString(0) else ""
+-            }.orEmpty()
+-        }.getOrDefault("")
+-    }
++    private fun displayName(context: Context, uri: Uri): String = runCatching {
++        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
++            if (cursor.moveToFirst()) cursor.getString(0) else ""
++        }.orEmpty()
++    }.getOrDefault("")
+ 
+     private fun unescapeXml(value: String): String = value
+         .replace("&amp;", "&")
+diff --git a/app/src/main/java/com/waxew/qrbarcode/data/HistoryDatabase.kt b/app/src/main/java/com/waxew/qrbarcode/data/HistoryDatabase.kt
+index e7d8288..1f960a7 100644
+--- a/app/src/main/java/com/waxew/qrbarcode/data/HistoryDatabase.kt
++++ b/app/src/main/java/com/waxew/qrbarcode/data/HistoryDatabase.kt
+@@ -65,8 +65,8 @@ interface HistoryDao {
+     @Query("DELETE FROM history_items")
+     suspend fun clear()
+ 
+-    @Query("DELETE FROM history_items WHERE createdAt NOT IN (SELECT createdAt FROM history_items ORDER BY createdAt DESC LIMIT 100)")
+-    suspend fun trimToLatest100()
++    @Query("DELETE FROM history_items WHERE createdAt NOT IN (SELECT createdAt FROM history_items ORDER BY createdAt DESC LIMIT 500)")
++    suspend fun trimToLatest500()
+ }
+ 
+ @Database(entities = [HistoryEntity::class], version = 2, exportSchema = false)
+diff --git a/app/src/main/java/com/waxew/qrbarcode/data/PreferencesRepository.kt b/app/src/main/java/com/waxew/qrbarcode/data/PreferencesRepository.kt
+index cd7ccef..7768eaf 100644
+--- a/app/src/main/java/com/waxew/qrbarcode/data/PreferencesRepository.kt
++++ b/app/src/main/java/com/waxew/qrbarcode/data/PreferencesRepository.kt
+@@ -73,12 +73,12 @@ class PreferencesRepository(context: Context) {
+         cachedHistory = buildList {
+             add(newItem)
+             addAll(cachedHistory.filterNot { it.kind == kind && it.payload == safePayload })
+-        }.take(100)
++        }.take(500)
+ 
+         scope.launch {
+             dao.deleteMatching(kind, safePayload)
+             dao.insert(HistoryEntity(now, kind, safePayload, newItem.favorite, newItem.folder, newItem.tags))
+-            dao.trimToLatest100()
++            dao.trimToLatest500()
+         }
+     }
+ 
+@@ -138,7 +138,7 @@ class PreferencesRepository(context: Context) {
+             dao.insertAll(sanitized.map {
+                 HistoryEntity(it.createdAt, it.kind, it.payload, it.favorite, it.folder, it.tags)
+             })
+-            dao.trimToLatest100()
++            dao.trimToLatest500()
+         }
+     }
+ 
+@@ -173,9 +173,9 @@ class PreferencesRepository(context: Context) {
+                                 )
+                             )
+                         }
+-                    }.take(100)
++                    }.take(500)
+                     dao.insertAll(oldRows)
+-                    dao.trimToLatest100()
++                    dao.trimToLatest500()
+                 }
+                 prefs.edit().putBoolean("history_room_migrated_v1", true).apply()
+             }
+diff --git a/app/src/main/java/com/waxew/qrbarcode/export/ExportManager.kt b/app/src/main/java/com/waxew/qrbarcode/export/ExportManager.kt
+index 2a913be..2812898 100644
+--- a/app/src/main/java/com/waxew/qrbarcode/export/ExportManager.kt
++++ b/app/src/main/java/com/waxew/qrbarcode/export/ExportManager.kt
+@@ -17,10 +17,27 @@ import android.net.Uri
+ import android.os.Build
+ import android.provider.MediaStore
+ import com.google.zxing.common.BitMatrix
++import com.waxew.qrbarcode.generator.CodeGenerator
++import java.util.zip.ZipEntry
++import java.util.zip.ZipOutputStream
+ import java.io.File
+ import java.io.FileOutputStream
+ import java.io.OutputStream
+ 
++data class LabelPdfSpec(
++    val pageWidth: Int,
++    val pageHeight: Int,
++    val columns: Int,
++    val rows: Int,
++    val margin: Float = 48f,
++    val gap: Float = 18f
++) {
++    companion object {
++        fun a4(columns: Int = 3, rows: Int = 5) = LabelPdfSpec(1240, 1754, columns, rows)
++        fun a5(columns: Int = 2, rows: Int = 4) = LabelPdfSpec(874, 1240, columns, rows)
++    }
++}
++
+ object ExportManager {
+     // خروجی PNG استاندارد با فشرده‌سازی بدون اتلاف.
+     fun savePng(context: Context, bitmap: Bitmap, displayName: String): Uri? {
+@@ -80,36 +97,34 @@ object ExportManager {
+         return uri
+     }
+ 
+-    // خروجی چند QR روی A4؛ هر صفحه 3 ستون × 5 ردیف دارد و برای چاپ لیبل مناسب است.
+-    fun saveA4LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? {
++    // خروجی چند QR با Layout قابل تنظیم برای A4/A5 و لیبل سفارشی.
++    fun saveLabelPdf(
++        context: Context,
++        bitmaps: List<Bitmap>,
++        displayName: String,
++        spec: LabelPdfSpec
++    ): Uri? {
+         require(bitmaps.isNotEmpty()) { "حداقل یک QR برای ساخت صفحه لیبل لازم است." }
++        require(spec.columns in 1..6 && spec.rows in 1..10) { "چیدمان لیبل نامعتبر است." }
+         val document = PdfDocument()
+-        val pageWidth = 1240
+-        val pageHeight = 1754
+-        val columns = 3
+-        val rows = 5
+-        val perPage = columns * rows
+-        val margin = 48f
+-        val gap = 18f
+-        val cellWidth = (pageWidth - margin * 2 - gap * (columns - 1)) / columns
+-        val cellHeight = (pageHeight - margin * 2 - gap * (rows - 1)) / rows
++        val perPage = spec.columns * spec.rows
++        val cellWidth = (spec.pageWidth - spec.margin * 2 - spec.gap * (spec.columns - 1)) / spec.columns
++        val cellHeight = (spec.pageHeight - spec.margin * 2 - spec.gap * (spec.rows - 1)) / spec.rows
+         val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+             style = Paint.Style.STROKE
+             strokeWidth = 1.5f
+             color = android.graphics.Color.LTGRAY
+         }
+-
+         bitmaps.chunked(perPage).forEachIndexed { pageIndex, pageItems ->
+-            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
++            val pageInfo = PdfDocument.PageInfo.Builder(spec.pageWidth, spec.pageHeight, pageIndex + 1).create()
+             val page = document.startPage(pageInfo)
+             pageItems.forEachIndexed { index, bitmap ->
+-                val row = index / columns
+-                val column = index % columns
+-                val left = margin + column * (cellWidth + gap)
+-                val top = margin + row * (cellHeight + gap)
++                val row = index / spec.columns
++                val column = index % spec.columns
++                val left = spec.margin + column * (cellWidth + spec.gap)
++                val top = spec.margin + row * (cellHeight + spec.gap)
+                 val cell = RectF(left, top, left + cellWidth, top + cellHeight)
+                 page.canvas.drawRoundRect(cell, 12f, 12f, borderPaint)
+-
+                 val innerPadding = 18f
+                 val availableW = cellWidth - innerPadding * 2
+                 val availableH = cellHeight - innerPadding * 2
+@@ -126,20 +141,42 @@ object ExportManager {
+             }
+             document.finishPage(page)
+         }
+-
+         val uri = writeMedia(
+-            context,
+-            "$displayName.pdf",
+-            "application/pdf",
+-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+-            "Download/QRStudio"
+-        ) { out ->
+-            document.writeTo(out)
+-        }
++            context, "$displayName.pdf", "application/pdf",
++            MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio"
++        ) { out -> document.writeTo(out) }
+         document.close()
+         return uri
+     }
+ 
++    fun saveA4LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? =
++        saveLabelPdf(context, bitmaps, displayName, LabelPdfSpec.a4())
++
++    fun saveA5LabelPdf(context: Context, bitmaps: List<Bitmap>, displayName: String): Uri? =
++        saveLabelPdf(context, bitmaps, displayName, LabelPdfSpec.a5())
++
++    // ZIP گروهی مستقیماً Stream می‌شود تا صدها PNG هم‌زمان در RAM نگه‌داری نشوند.
++    fun saveQrZip(context: Context, payloads: List<String>, displayName: String): Uri? {
++        require(payloads.isNotEmpty()) { "داده‌ای برای ZIP وجود ندارد." }
++        return writeMedia(
++            context, "$displayName.zip", "application/zip",
++            MediaStore.Downloads.EXTERNAL_CONTENT_URI, "Download/QRStudio"
++        ) { out ->
++            ZipOutputStream(out).use { zip ->
++                payloads.take(300).forEachIndexed { index, payload ->
++                    val generated = CodeGenerator.qr(payload, size = 640)
++                    try {
++                        zip.putNextEntry(ZipEntry("qr_${index + 1}.png"))
++                        generated.bitmap.compress(Bitmap.CompressFormat.PNG, 100, zip)
++                        zip.closeEntry()
++                    } finally {
++                        generated.bitmap.recycle()
++                    }
++                }
++            }
++        }
++    }
++
+     // نقطه مشترک تمام عملیات ذخیره‌سازی؛ در خطا رکورد ناقص MediaStore پاک می‌شود.
+     private fun writeMedia(
+         context: Context,
