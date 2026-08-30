@@ -1,0 +1,203 @@
+diff --git a/app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt b/app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt
+index 37c656b..db1b259 100644
+--- a/app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt
++++ b/app/src/main/java/com/waxew/qrbarcode/ui/QrBarcodeApp.kt
+@@ -132,14 +132,18 @@ import com.journeyapps.barcodescanner.ScanContract
+ import com.journeyapps.barcodescanner.ScanOptions
+ import com.waxew.qrbarcode.BuildConfig
+ import com.waxew.qrbarcode.batch.BatchInputReader
++import com.waxew.qrbarcode.batch.BatchTable
+ import com.waxew.qrbarcode.billing.BillingManager
+ import com.waxew.qrbarcode.billing.PremiumState
+ import com.waxew.qrbarcode.data.PreferencesRepository
+ import com.waxew.qrbarcode.export.ExportManager
++import com.waxew.qrbarcode.export.LabelPdfSpec
+ import com.waxew.qrbarcode.generator.CodeGenerator
+ import com.waxew.qrbarcode.generator.FinderStyle
+ import com.waxew.qrbarcode.generator.FrameStyle
+ import com.waxew.qrbarcode.generator.GeneratedCode
++import com.waxew.qrbarcode.generator.GradientDirection
++import com.waxew.qrbarcode.generator.LogoShape
+ import com.waxew.qrbarcode.generator.ModuleStyle
+ import com.waxew.qrbarcode.generator.QrDesign
+ import com.waxew.qrbarcode.scanner.DecodedImageCode
+@@ -148,6 +152,9 @@ import com.waxew.qrbarcode.scanner.LinkRiskLevel
+ import com.waxew.qrbarcode.scanner.ScanSafetyAnalyzer
+ import com.waxew.qrbarcode.update.UpdateChecker
+ import com.waxew.qrbarcode.util.NumberFormatter
++import com.waxew.qrbarcode.v19.V19SettingsRepository
++import com.waxew.qrbarcode.v20.V20DesignPreset
++import com.waxew.qrbarcode.v20.V20DesignPresetStore
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+ import kotlinx.coroutines.withContext
+@@ -197,18 +204,25 @@ private data class QrDesignState(
+     val moduleStyle: ModuleStyle = ModuleStyle.CLASSIC,
+     val finderStyle: FinderStyle = FinderStyle.CLASSIC,
+     val foreground: Int = AndroidColor.rgb(42, 34, 55),
++    val finderForeground: Int = AndroidColor.rgb(42, 34, 55),
+     val gradientEnd: Int = AndroidColor.rgb(129, 103, 180),
+     val gradientEnabled: Boolean = false,
++    val gradientDirection: GradientDirection = GradientDirection.DIAGONAL,
++    val moduleScale: Float = 1f,
+     val background: Int = AndroidColor.WHITE,
+     val transparentBackground: Boolean = false,
++    val backgroundImageUri: String? = null,
+     val frameStyle: FrameStyle = FrameStyle.NONE,
+     val frameText: String = "",
+-    val logoUri: String? = null
++    val logoUri: String? = null,
++    val logoShape: LogoShape = LogoShape.ROUNDED,
++    val logoBorderColor: Int = AndroidColor.WHITE
+ ) {
+     fun professional(): Boolean =
+         moduleStyle.premium || finderStyle.premium || gradientEnabled || transparentBackground ||
+-            frameStyle.premium || logoUri != null || background != AndroidColor.WHITE ||
+-            foreground != AndroidColor.rgb(42, 34, 55)
++            frameStyle.premium || logoUri != null || backgroundImageUri != null || background != AndroidColor.WHITE ||
++            foreground != AndroidColor.rgb(42, 34, 55) || finderForeground != foreground || moduleScale != 1f ||
++            logoShape != LogoShape.ROUNDED
+ }
+ 
+ @OptIn(ExperimentalMaterial3Api::class)
+@@ -514,6 +528,10 @@ private fun QrMakerScreen(
+     var design by remember { mutableStateOf(QrDesignState()) }
+     val undoStack = remember { mutableStateListOf<QrDesignState>() }
+     val redoStack = remember { mutableStateListOf<QrDesignState>() }
++    val presetStore = remember(context) { V20DesignPresetStore(context) }
++    var presetName by remember { mutableStateOf("") }
++    var presetRevision by remember { mutableStateOf(0) }
++    val presets = remember(presetRevision) { presetStore.all() }
+ 
+     fun commit(next: QrDesignState) {
+         if (next == design) return
+@@ -535,26 +553,69 @@ private fun QrMakerScreen(
+         design = redoStack.removeAt(redoStack.lastIndex)
+     }
+ 
++    fun savePreset() {
++        presetStore.save(V20DesignPreset(
++            name = presetName.ifBlank { "طرح ${presets.size + 1}" },
++            moduleStyle = design.moduleStyle, finderStyle = design.finderStyle,
++            foreground = design.foreground, finderForeground = design.finderForeground,
++            gradientEnd = design.gradientEnd, gradientEnabled = design.gradientEnabled,
++            gradientDirection = design.gradientDirection, moduleScale = design.moduleScale,
++            background = design.background, transparentBackground = design.transparentBackground,
++            backgroundImageUri = design.backgroundImageUri, frameStyle = design.frameStyle,
++            frameText = design.frameText, logoUri = design.logoUri, logoShape = design.logoShape,
++            logoBorderColor = design.logoBorderColor
++        ))
++        presetName = ""
++        presetRevision++
++        onMessage("Preset طراحی ذخیره شد.")
++    }
++
++    fun loadPreset(preset: V20DesignPreset) {
++        commit(QrDesignState(
++            moduleStyle = preset.moduleStyle, finderStyle = preset.finderStyle,
++            foreground = preset.foreground, finderForeground = preset.finderForeground,
++            gradientEnd = preset.gradientEnd, gradientEnabled = preset.gradientEnabled,
++            gradientDirection = preset.gradientDirection, moduleScale = preset.moduleScale,
++            background = preset.background, transparentBackground = preset.transparentBackground,
++            backgroundImageUri = preset.backgroundImageUri, frameStyle = preset.frameStyle,
++            frameText = preset.frameText, logoUri = preset.logoUri, logoShape = preset.logoShape,
++            logoBorderColor = preset.logoBorderColor
++        ))
++    }
++
+     val logoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+         if (uri != null) {
+             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+             commit(design.copy(logoUri = uri.toString()))
+         }
+     }
++    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri != null) {
++            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
++            commit(design.copy(backgroundImageUri = uri.toString(), transparentBackground = false))
++        }
++    }
+ 
+     val logoBitmap = remember(design.logoUri) { loadLocalBitmap(context, design.logoUri, 768) }
++    val backgroundBitmap = remember(design.backgroundImageUri) { loadLocalBitmap(context, design.backgroundImageUri, 1024) }
+     val generatorDesign = remember(design, logoBitmap) {
+         QrDesign(
+             moduleStyle = design.moduleStyle,
+             finderStyle = design.finderStyle,
+             foreground = design.foreground,
++            finderForeground = design.finderForeground,
+             gradientEnd = design.gradientEnd,
+             gradientEnabled = design.gradientEnabled,
++            gradientDirection = design.gradientDirection,
++            moduleScale = design.moduleScale,
+             background = design.background,
+             transparentBackground = design.transparentBackground,
++            backgroundImage = backgroundBitmap,
+             frameStyle = design.frameStyle,
+             frameText = design.frameText,
+-            logo = logoBitmap
++            logo = logoBitmap,
++            logoShape = design.logoShape,
++            logoBorderColor = design.logoBorderColor
+         )
+     }
+     val payload = remember(kind, input) { buildQrPayload(kind, input) }
+@@ -583,6 +644,24 @@ private fun QrMakerScreen(
+                 }
+             }
+         }
++        item {
++            SectionTitle("Presetهای طراحی")
++            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
++                OutlinedTextField(
++                    value = presetName, onValueChange = { presetName = it.take(30) },
++                    modifier = Modifier.weight(1f), singleLine = true, label = { Text("نام Preset") }
++                )
++                Button(onClick = ::savePreset) { Text("ذخیره") }
++            }
++            if (presets.isNotEmpty()) {
++                Spacer(Modifier.height(8.dp))
++                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
++                    presets.forEach { preset ->
++                        OutlinedButton(onClick = { loadPreset(preset) }) { Text(preset.name) }
++                    }
++                }
++            }
++        }
+         item {
+             SectionTitle("نوع QR")
+             ChipRow {
+@@ -627,6 +706,17 @@ private fun QrMakerScreen(
+                 }
+             }
+         }
++        item {
++            SectionTitle("رنگ Finder مستقل 👑")
++            ColorPalette(selected = design.finderForeground) { commit(design.copy(finderForeground = it)) }
++            Spacer(Modifier.height(12.dp))
++            Text("ضخامت ماژول", fontWeight = FontWeight.Bold)
++            ChipRow {
++                listOf(1f to "100%", 0.85f to "85%", 0.70f to "70%").forEach { (scale, title) ->
++                    ChoiceChip(title, selected = design.moduleScale == scale) { commit(design.copy(moduleScale = scale)) }
++                }
++            }
++        }
+         item {
+             SectionTitle("رنگ و گرادیان")
+             SettingsInlineSwitch(
+@@ -644,6 +734,15 @@ private fun QrMakerScreen(
+                 Text("رنگ انتهای گرادیان", fontWeight = FontWeight.Bold)
+                 Spacer(Modifier.height(8.dp))
+                 ColorPalette(selected = design.gradientEnd) { commit(design.copy(gradientEnd = it)) }
++                Spacer(Modifier.height(12.dp))
++                Text("جهت گرادیان", fontWeight = FontWeight.Bold)
++                ChipRow {
++                    GradientDirection.entries.forEach { direction ->
++                        ChoiceChip(direction.title, selected = design.gradientDirection == direction) {
++                            commit(design.copy(gradientDirection = direction))
++                        }
++                    }
++                }
+             }
+         }
+         item {
